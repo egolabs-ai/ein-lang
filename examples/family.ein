@@ -1,0 +1,16 @@
+// Family relationships example
+// Run with: cargo run examples/family.ein
+
+// Facts: who is parent of whom
+Parent(Alice, Bob).
+Parent(Alice, Carol).
+Parent(Bob, Dave).
+Parent(Bob, Emma).
+Parent(Carol, Frank).
+
+// Rules: derive ancestor relationships
+Ancestor(x,y) <- Parent(x,y)
+Ancestor(x,z) <- Ancestor(x,y) Parent(y,z)
+
+// Sibling rule (share a parent)
+Sibling(x,y) <- Parent(p,x) Parent(p,y)

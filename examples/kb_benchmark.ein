@@ -1,0 +1,39 @@
+// Knowledge Graph Embedding Benchmark
+// Demonstrates soft/differentiable relation composition
+//
+// Task: Derive relation composition via tensor operations
+// Dataset: Countries (locatedIn, hasLanguage)
+//
+// Run with:
+//   :load examples/kb_benchmark.ein
+//   :print SameRegion
+//   :print SharesLanguage
+
+// === Relation: LocatedIn [country, region] ===
+// 10 countries x 4 regions (europe, north_america, south_america, asia)
+// france=0, germany=1, uk=2, usa=3, canada=4, brazil=5, argentina=6, china=7, japan=8, india=9
+LocatedIn = [[1,0,0,0],[1,0,0,0],[1,0,0,0],[0,1,0,0],[0,1,0,0],[0,0,1,0],[0,0,1,0],[0,0,0,1],[0,0,0,1],[0,0,0,1]]
+
+// === Derived: SameRegion [country, country] ===
+// SameRegion(x,y) = exists r. LocatedIn(x,r) AND LocatedIn(y,r)
+// As tensor: SameRegion = LocatedIn @ LocatedIn^T
+SameRegion[x,y] = LocatedIn[x,r] LocatedIn[y,r]
+
+// === Relation: HasLanguage [country, language] ===
+// 10 countries x 5 languages (french, german, english, spanish, portuguese)
+// france=french, germany=german, uk/usa/canada/india=english, brazil=portuguese, argentina=spanish, china/japan=none
+HasLanguage = [[1,0,0,0,0],[0,1,0,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,0,0,1],[0,0,0,1,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,1,0,0]]
+
+// === Derived: SharesLanguage [country, country] ===
+// SharesLanguage(x,y) = exists l. HasLanguage(x,l) AND HasLanguage(y,l)
+SharesLanguage[x,y] = HasLanguage[x,l] HasLanguage[y,l]
+
+// === Expected Results ===
+// SameRegion shows block structure:
+//   European cluster (0,1,2): france, germany, uk
+//   North American cluster (3,4): usa, canada
+//   South American cluster (5,6): brazil, argentina
+//   Asian cluster (7,8,9): china, japan, india
+//
+// SharesLanguage shows English speakers connected:
+//   uk(2), usa(3), canada(4), india(9) all share English

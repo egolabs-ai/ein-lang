@@ -1,0 +1,17 @@
+// Flight routes example
+// Run with: cargo run examples/flights.ein
+
+// Direct flights
+Flight(NYC, LA).
+Flight(NYC, Chicago).
+Flight(LA, Tokyo).
+Flight(LA, Sydney).
+Flight(Chicago, Denver).
+Flight(Denver, Seattle).
+Flight(Tokyo, Sydney).
+Flight(London, Paris).
+Flight(Paris, Rome).
+
+// Reachability rules
+CanReach(x,y) <- Flight(x,y)
+CanReach(x,z) <- CanReach(x,y) Flight(y,z)

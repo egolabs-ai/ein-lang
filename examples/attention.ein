@@ -1,0 +1,50 @@
+// Multi-Head Causal Attention
+// Demonstrates Ein's einsum-based attention computation
+
+// Configuration
+d_model = 64
+n_heads = 4
+head_dim = 16
+seq_len = 8
+
+// Input: [seq_len, d_model]
+X = [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]]
+
+// Projection weights
+@param Wq: Float[64, 64] xavier
+@param Wk: Float[64, 64] xavier
+@param Wv: Float[64, 64] xavier
+@param Wo: Float[64, 64] xavier
+
+// Project to Q, K, V
+Q_flat[i,j] = X[i,k] Wq[k,j]
+K_flat[i,j] = X[i,k] Wk[k,j]
+V_flat[i,j] = X[i,k] Wv[k,j]
+
+// Reshape to multi-head: [seq, heads, head_dim]
+Q = reshape(Q_flat, 8, 4, 16)
+K = reshape(K_flat, 8, 4, 16)
+V = reshape(V_flat, 8, 4, 16)
+
+// Attention scores: Q @ K^T / sqrt(head_dim)
+// [seq, heads, head_dim] @ [seq, heads, head_dim]^T -> [heads, seq, seq]
+Scores[h,i,j] = Q[i,h,d] K[j,h,d] / 4.0
+
+// Causal mask
+Mask = causal_mask(X)
+MaskedScores = mask_fill(Scores, Mask, neg_inf())
+
+// Softmax attention weights
+Attn = softmax(MaskedScores)
+
+// Apply attention to values: [heads, seq, seq] @ [seq, heads, head_dim]
+AttnOut[h,i,d] = Attn[h,i,j] V[j,h,d]
+
+// Reshape back and project
+AttnFlat = reshape(AttnOut, 8, 64)
+Out[i,j] = AttnFlat[i,k] Wo[k,j]
+
+// Run with:
+//   :load examples/attention.ein
+//   :print Attn
+//   :print Out

@@ -1,0 +1,273 @@
+// GPT matching nanoGPT Shakespeare configuration
+// Target: ~1.47 validation loss, decent Shakespeare text
+//
+// Config: vocab=65, d_model=384, n_heads=6, head_dim=64, d_ff=1536, n_layers=6
+// Context: 256 tokens
+//
+// Usage:
+//   :load_text data/tiny_shakespeare.txt seq_len=256
+//   :batch batch_size=64
+//   :load examples/gpt_nano.ein
+//   :train Loss epochs=500 lr=0.001 optimizer=adamw batch_size=64
+//   :save gpt_nano.safetensors
+//   :generate ROMEO: length=200 temperature=0.8
+
+// === Learnable Parameters ===
+
+// Token embeddings [vocab, d_model]
+@embedding E: vocab=65 dim=384
+
+// Layer 1
+@param Wq1: Float[384, 384]
+@param Wk1: Float[384, 384]
+@param Wv1: Float[384, 384]
+@param Wo1: Float[384, 384]
+@param Wff1a: Float[384, 1536]
+@param Bff1a: Float[1536]
+@param Wff1b: Float[1536, 384]
+@param Bff1b: Float[384]
+
+// Layer 2
+@param Wq2: Float[384, 384]
+@param Wk2: Float[384, 384]
+@param Wv2: Float[384, 384]
+@param Wo2: Float[384, 384]
+@param Wff2a: Float[384, 1536]
+@param Bff2a: Float[1536]
+@param Wff2b: Float[1536, 384]
+@param Bff2b: Float[384]
+
+// Layer 3
+@param Wq3: Float[384, 384]
+@param Wk3: Float[384, 384]
+@param Wv3: Float[384, 384]
+@param Wo3: Float[384, 384]
+@param Wff3a: Float[384, 1536]
+@param Bff3a: Float[1536]
+@param Wff3b: Float[1536, 384]
+@param Bff3b: Float[384]
+
+// Layer 4
+@param Wq4: Float[384, 384]
+@param Wk4: Float[384, 384]
+@param Wv4: Float[384, 384]
+@param Wo4: Float[384, 384]
+@param Wff4a: Float[384, 1536]
+@param Bff4a: Float[1536]
+@param Wff4b: Float[1536, 384]
+@param Bff4b: Float[384]
+
+// Layer 5
+@param Wq5: Float[384, 384]
+@param Wk5: Float[384, 384]
+@param Wv5: Float[384, 384]
+@param Wo5: Float[384, 384]
+@param Wff5a: Float[384, 1536]
+@param Bff5a: Float[1536]
+@param Wff5b: Float[1536, 384]
+@param Bff5b: Float[384]
+
+// Layer 6
+@param Wq6: Float[384, 384]
+@param Wk6: Float[384, 384]
+@param Wv6: Float[384, 384]
+@param Wo6: Float[384, 384]
+@param Wff6a: Float[384, 1536]
+@param Bff6a: Float[1536]
+@param Wff6b: Float[1536, 384]
+@param Bff6b: Float[384]
+
+// Output projection [d_model, vocab]
+@param Wlm: Float[384, 65]
+
+// === Forward Pass ===
+
+// Token + position embeddings
+Tok = embed(E, Inputs)
+Pos = arange(Tok)
+PE = sin_pos(Pos, Tok)
+X0 = Tok + PE
+
+// Dynamic dimensions
+B = size(X0, 0)
+S = size(X0, 1)
+D = 384
+H = 6
+K = 64
+
+// Shared mask for all layers
+Mask = causal_mask(X0)
+Scale = sqrt(64.0)
+
+// ============ LAYER 1 ============
+X0n = lnorm(X0)
+Q1f[b,s,d] = X0n[b,s,k] Wq1[k,d]
+K1f[b,s,d] = X0n[b,s,k] Wk1[k,d]
+V1f[b,s,d] = X0n[b,s,k] Wv1[k,d]
+Q1r = reshape(Q1f, B, S, H, K)
+K1r = reshape(K1f, B, S, H, K)
+V1r = reshape(V1f, B, S, H, K)
+Q1 = transpose(Q1r, 1, 2)
+K1 = transpose(K1r, 1, 2)
+V1 = transpose(V1r, 1, 2)
+S1[b,h,i,j] = Q1[b,h,i,k] K1[b,h,j,k]
+S1s = S1 / Scale
+S1m = mask_fill(S1s, Mask, neg_inf())
+A1 = softmax(S1m)
+O1[b,h,s,k] = A1[b,h,s,t] V1[b,h,t,k]
+O1t = transpose(O1, 1, 2)
+O1f = reshape(O1t, B, S, D)
+O1p[b,s,d] = O1f[b,s,k] Wo1[k,d]
+X1 = X0 + O1p
+X1n = lnorm(X1)
+F1a[b,s,f] = X1n[b,s,d] Wff1a[d,f]
+F1ab = F1a + Bff1a
+F1ag = gelu(F1ab)
+F1b[b,s,d] = F1ag[b,s,f] Wff1b[f,d]
+F1o = F1b + Bff1b
+X2 = X1 + F1o
+
+// ============ LAYER 2 ============
+X2n = lnorm(X2)
+Q2f[b,s,d] = X2n[b,s,k] Wq2[k,d]
+K2f[b,s,d] = X2n[b,s,k] Wk2[k,d]
+V2f[b,s,d] = X2n[b,s,k] Wv2[k,d]
+Q2r = reshape(Q2f, B, S, H, K)
+K2r = reshape(K2f, B, S, H, K)
+V2r = reshape(V2f, B, S, H, K)
+Q2 = transpose(Q2r, 1, 2)
+K2 = transpose(K2r, 1, 2)
+V2 = transpose(V2r, 1, 2)
+S2[b,h,i,j] = Q2[b,h,i,k] K2[b,h,j,k]
+S2s = S2 / Scale
+S2m = mask_fill(S2s, Mask, neg_inf())
+A2 = softmax(S2m)
+O2[b,h,s,k] = A2[b,h,s,t] V2[b,h,t,k]
+O2t = transpose(O2, 1, 2)
+O2f = reshape(O2t, B, S, D)
+O2p[b,s,d] = O2f[b,s,k] Wo2[k,d]
+X3 = X2 + O2p
+X3n = lnorm(X3)
+F2a[b,s,f] = X3n[b,s,d] Wff2a[d,f]
+F2ab = F2a + Bff2a
+F2ag = gelu(F2ab)
+F2b[b,s,d] = F2ag[b,s,f] Wff2b[f,d]
+F2o = F2b + Bff2b
+X4 = X3 + F2o
+
+// ============ LAYER 3 ============
+X4n = lnorm(X4)
+Q3f[b,s,d] = X4n[b,s,k] Wq3[k,d]
+K3f[b,s,d] = X4n[b,s,k] Wk3[k,d]
+V3f[b,s,d] = X4n[b,s,k] Wv3[k,d]
+Q3r = reshape(Q3f, B, S, H, K)
+K3r = reshape(K3f, B, S, H, K)
+V3r = reshape(V3f, B, S, H, K)
+Q3 = transpose(Q3r, 1, 2)
+K3 = transpose(K3r, 1, 2)
+V3 = transpose(V3r, 1, 2)
+S3[b,h,i,j] = Q3[b,h,i,k] K3[b,h,j,k]
+S3s = S3 / Scale
+S3m = mask_fill(S3s, Mask, neg_inf())
+A3 = softmax(S3m)
+O3[b,h,s,k] = A3[b,h,s,t] V3[b,h,t,k]
+O3t = transpose(O3, 1, 2)
+O3f = reshape(O3t, B, S, D)
+O3p[b,s,d] = O3f[b,s,k] Wo3[k,d]
+X5 = X4 + O3p
+X5n = lnorm(X5)
+F3a[b,s,f] = X5n[b,s,d] Wff3a[d,f]
+F3ab = F3a + Bff3a
+F3ag = gelu(F3ab)
+F3b[b,s,d] = F3ag[b,s,f] Wff3b[f,d]
+F3o = F3b + Bff3b
+X6 = X5 + F3o
+
+// ============ LAYER 4 ============
+X6n = lnorm(X6)
+Q4f[b,s,d] = X6n[b,s,k] Wq4[k,d]
+K4f[b,s,d] = X6n[b,s,k] Wk4[k,d]
+V4f[b,s,d] = X6n[b,s,k] Wv4[k,d]
+Q4r = reshape(Q4f, B, S, H, K)
+K4r = reshape(K4f, B, S, H, K)
+V4r = reshape(V4f, B, S, H, K)
+Q4 = transpose(Q4r, 1, 2)
+K4 = transpose(K4r, 1, 2)
+V4 = transpose(V4r, 1, 2)
+S4[b,h,i,j] = Q4[b,h,i,k] K4[b,h,j,k]
+S4s = S4 / Scale
+S4m = mask_fill(S4s, Mask, neg_inf())
+A4 = softmax(S4m)
+O4[b,h,s,k] = A4[b,h,s,t] V4[b,h,t,k]
+O4t = transpose(O4, 1, 2)
+O4f = reshape(O4t, B, S, D)
+O4p[b,s,d] = O4f[b,s,k] Wo4[k,d]
+X7 = X6 + O4p
+X7n = lnorm(X7)
+F4a[b,s,f] = X7n[b,s,d] Wff4a[d,f]
+F4ab = F4a + Bff4a
+F4ag = gelu(F4ab)
+F4b[b,s,d] = F4ag[b,s,f] Wff4b[f,d]
+F4o = F4b + Bff4b
+X8 = X7 + F4o
+
+// ============ LAYER 5 ============
+X8n = lnorm(X8)
+Q5f[b,s,d] = X8n[b,s,k] Wq5[k,d]
+K5f[b,s,d] = X8n[b,s,k] Wk5[k,d]
+V5f[b,s,d] = X8n[b,s,k] Wv5[k,d]
+Q5r = reshape(Q5f, B, S, H, K)
+K5r = reshape(K5f, B, S, H, K)
+V5r = reshape(V5f, B, S, H, K)
+Q5 = transpose(Q5r, 1, 2)
+K5 = transpose(K5r, 1, 2)
+V5 = transpose(V5r, 1, 2)
+S5[b,h,i,j] = Q5[b,h,i,k] K5[b,h,j,k]
+S5s = S5 / Scale
+S5m = mask_fill(S5s, Mask, neg_inf())
+A5 = softmax(S5m)
+O5[b,h,s,k] = A5[b,h,s,t] V5[b,h,t,k]
+O5t = transpose(O5, 1, 2)
+O5f = reshape(O5t, B, S, D)
+O5p[b,s,d] = O5f[b,s,k] Wo5[k,d]
+X9 = X8 + O5p
+X9n = lnorm(X9)
+F5a[b,s,f] = X9n[b,s,d] Wff5a[d,f]
+F5ab = F5a + Bff5a
+F5ag = gelu(F5ab)
+F5b[b,s,d] = F5ag[b,s,f] Wff5b[f,d]
+F5o = F5b + Bff5b
+X10 = X9 + F5o
+
+// ============ LAYER 6 ============
+X10n = lnorm(X10)
+Q6f[b,s,d] = X10n[b,s,k] Wq6[k,d]
+K6f[b,s,d] = X10n[b,s,k] Wk6[k,d]
+V6f[b,s,d] = X10n[b,s,k] Wv6[k,d]
+Q6r = reshape(Q6f, B, S, H, K)
+K6r = reshape(K6f, B, S, H, K)
+V6r = reshape(V6f, B, S, H, K)
+Q6 = transpose(Q6r, 1, 2)
+K6 = transpose(K6r, 1, 2)
+V6 = transpose(V6r, 1, 2)
+S6[b,h,i,j] = Q6[b,h,i,k] K6[b,h,j,k]
+S6s = S6 / Scale
+S6m = mask_fill(S6s, Mask, neg_inf())
+A6 = softmax(S6m)
+O6[b,h,s,k] = A6[b,h,s,t] V6[b,h,t,k]
+O6t = transpose(O6, 1, 2)
+O6f = reshape(O6t, B, S, D)
+O6p[b,s,d] = O6f[b,s,k] Wo6[k,d]
+X11 = X10 + O6p
+X11n = lnorm(X11)
+F6a[b,s,f] = X11n[b,s,d] Wff6a[d,f]
+F6ab = F6a + Bff6a
+F6ag = gelu(F6ab)
+F6b[b,s,d] = F6ag[b,s,f] Wff6b[f,d]
+F6o = F6b + Bff6b
+X12 = X11 + F6o
+
+// === Output ===
+X12n = lnorm(X12)
+Logits[b,s,v] = X12n[b,s,d] Wlm[d,v]
+Loss = cross_entropy(Logits, Targets)

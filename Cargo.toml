@@ -1,0 +1,90 @@
+[package]
+name = "ein"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Ein: A tensor logic language unifying neural and symbolic AI"
+license = "MIT"
+repository = "https://github.com/egolabs/ein"
+keywords = ["tensor", "logic", "einsum", "datalog", "ml"]
+categories = ["science", "mathematics", "compilers"]
+
+[lib]
+name = "ein"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ein"
+path = "src/main.rs"
+
+[dependencies]
+# ML Backend
+candle-core = "0.8"
+candle-nn = "0.8"
+
+# Parsing
+logos = "0.14"
+
+# CLI/REPL
+rustyline = "14"
+clap = { version = "4", features = ["derive"] }
+
+# Utilities
+thiserror = "2"
+indexmap = "2"
+rustc-hash = "2"
+
+[dev-dependencies]
+# Testing
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1"
+
+# Comparison baseline (for benchmarks)
+datafrog = "2.0"
+
+[features]
+default = ["cpu"]
+cpu = []
+cuda = ["candle-core/cuda"]
+metal = ["candle-core/metal"]
+
+[[bench]]
+name = "tensor_ops"
+harness = false
+
+[[bench]]
+name = "sparse_join"
+harness = false
+
+[[bench]]
+name = "forward_chain"
+harness = false
+
+[[bench]]
+name = "embedding_bench"
+harness = false
+
+[[bench]]
+name = "ein_comparison"
+harness = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+
+[profile.bench]
+debug = true
+
+[lints.rust]
+unsafe_code = "warn"
+missing_docs = "allow"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+# Allow some pedantic lints that are too noisy
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

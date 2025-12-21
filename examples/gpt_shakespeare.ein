@@ -1,0 +1,104 @@
+// GPT-style Transformer for Shakespeare
+// Single-head self-attention + FFN with causal masking
+// Targeting nanoGPT-level performance (~1.5 val loss)
+//
+// Usage:
+//   ein
+//   :load_text data/tiny_shakespeare.txt seq_len=64
+//   :batch batch_size=16
+//   :load examples/gpt_shakespeare.ein
+//   :train Loss epochs=500 lr=0.001 optimizer=adamw
+//   :generate "ROMEO:" length=200
+
+// === Model Configuration ===
+// vocab_size = 65 (characters in Shakespeare)
+// seq_len = 64 (context window)
+// d_model = 128 (embedding dimension)
+// d_ff = 512 (feed-forward hidden dimension, 4x d_model)
+
+// === Learnable Parameters ===
+
+// Token embeddings [vocab, d_model]
+@embedding E: vocab=65 dim=128
+
+// Attention projections [d_model, d_model]
+@param Wq: Float[128, 128]
+@param Wk: Float[128, 128]
+@param Wv: Float[128, 128]
+@param Wout: Float[128, 128]
+
+// Feed-forward network [d_model -> d_ff -> d_model]
+@param Wff1: Float[128, 512]
+@param Bff1: Float[512]
+@param Wff2: Float[512, 128]
+@param Bff2: Float[128]
+
+// Output projection to vocabulary [d_model, vocab]
+@param Wlm: Float[128, 65]
+
+// === Forward Pass ===
+
+// Token embeddings
+Tok = embed(E, Inputs)
+
+// Sinusoidal positional encoding
+Pos = arange(Tok)
+PE = sin_pos(Pos, Tok)
+
+// Input with position info
+X0 = Tok + PE
+
+// === Attention Block ===
+
+// Pre-norm (GPT-2 style)
+X0n = lnorm(X0)
+
+// Self-attention Q, K, V projections
+Q[b,s,d] = X0n[b,s,k] Wq[k,d]
+K[b,s,d] = X0n[b,s,k] Wk[k,d]
+V[b,s,d] = X0n[b,s,k] Wv[k,d]
+
+// Attention scores: Q @ K^T / sqrt(d_k)
+Scores[b,i,j] = Q[b,i,d] K[b,j,d]
+Scale = sqrt(128.0)
+ScaledScores = Scores / Scale
+
+// Causal masking (can only attend to past positions)
+Mask = causal_mask(X0)
+MaskedScores = mask_fill(ScaledScores, Mask, neg_inf())
+
+// Attention weights
+Attn = softmax(MaskedScores)
+
+// Attention output with projection
+AttnV[b,s,d] = Attn[b,s,t] V[b,t,d]
+AttnOut[b,s,d] = AttnV[b,s,k] Wout[k,d]
+
+// Residual connection
+X1 = X0 + AttnOut
+
+// === Feed-Forward Block ===
+
+// Pre-norm
+X1n = lnorm(X1)
+
+// FFN: GELU(X @ W1 + b1) @ W2 + b2
+FF1[b,s,f] = X1n[b,s,d] Wff1[d,f]
+FF1b = FF1 + Bff1
+FF1a = gelu(FF1b)
+FF2[b,s,d] = FF1a[b,s,f] Wff2[f,d]
+FFOut = FF2 + Bff2
+
+// Residual connection
+X2 = X1 + FFOut
+
+// === Output ===
+
+// Final layer norm
+X2n = lnorm(X2)
+
+// Output logits
+Logits[b,s,v] = X2n[b,s,d] Wlm[d,v]
+
+// Cross-entropy loss for next token prediction
+Loss = cross_entropy(Logits, Targets)

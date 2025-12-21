@@ -1,0 +1,52 @@
+// Soft Relation Composition
+// Demonstrates differentiable relation algebra via matrix multiplication
+//
+// This shows how Ein can do "soft" Datalog-style reasoning where
+// relations are probability/weight matrices and composition is matmul.
+//
+// Run with:
+//   cargo run --release
+//   :load examples/soft_relations.ein
+//   :print Parent
+//   :print Grandparent
+//   :print GreatGrand
+
+// === Entity Encoding ===
+// Entities as indices: Alice=0, Bob=1, Carol=2, Dave=3
+//
+// Relation as adjacency matrix [from, to]:
+//   R[x,y] = 1.0 means "x R y" holds
+//   R[x,y] = 0.0 means "x R y" does not hold
+//   R[x,y] = 0.7 means "x R y" holds with probability 0.7
+
+// === Facts ===
+// Parent relation: Alice->Bob->Carol->Dave
+Parent = [[0,1,0,0],[0,0,1,0],[0,0,0,1],[0,0,0,0]]
+
+// === Derived Relations via Composition ===
+
+// Grandparent = Parent ∘ Parent
+// "x is grandparent of z" if "x is parent of y" and "y is parent of z"
+// This is matrix multiplication: Grandparent = Parent @ Parent
+Grandparent[x,z] = Parent[x,y] Parent[y,z]
+
+// Great-grandparent = Grandparent ∘ Parent
+GreatGrand[x,z] = Grandparent[x,y] Parent[y,z]
+
+// === Expected Results ===
+//
+// Parent:       Alice->Bob, Bob->Carol, Carol->Dave
+// Grandparent:  Alice->Carol, Bob->Dave
+// GreatGrand:   Alice->Dave
+//
+// To verify:
+//   :print Parent
+//   :print Grandparent
+//   :print GreatGrand
+
+// === Why This Matters ===
+//
+// 1. DIFFERENTIABLE: Relations can be learned via gradient descent
+// 2. PROBABILISTIC: Soft values represent uncertainty
+// 3. COMPOSABLE: Einsum gives us relation algebra for free
+// 4. UNIFIED: Same syntax for neural nets and symbolic reasoning

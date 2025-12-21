@@ -1,0 +1,20 @@
+// Matrix multiplication example
+// Run with: cargo run examples/matmul.ein
+//
+// Shows Einstein notation for various tensor operations
+
+// Create matrices
+:rand A 3 4
+:rand B 4 2
+:ones V 4
+
+// Matrix-matrix multiplication: C = A @ B
+// C[i,k] = A[i,j] * B[j,k]  (sum over j)
+C[i,k] = A[i,j] B[j,k]
+
+// Matrix-vector multiplication: Y = A @ V
+// Y[i] = A[i,j] * V[j]  (sum over j)
+Y[i] = A[i,j] V[j]
+
+// With activation
+Z[i] = sigmoid(A[i,j] V[j])

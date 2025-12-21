@@ -1,0 +1,67 @@
+// Soft Rule Learning
+// Multi-relation knowledge base with learned composition rules
+//
+// STATUS: 3-tensor contraction WORKS!
+//         Element assignment (State[0,0,1] = 1.0) not yet implemented
+//
+// This demonstrates differentiable Datalog in Ein.
+
+// === Architecture ===
+//
+// State[subject, relation, object] - knowledge base tensor
+//   - 4 entities: Alice(0), Bob(1), Carol(2), Dave(3)
+//   - 3 relations: parent(0), grandparent(1), great-grandparent(2)
+//
+// Rules[derived, rel1, rel2] - composition rules
+//   - Rules[r, r1, r2] = weight for: r(x,z) <- r1(x,y), r2(y,z)
+
+// === Working Example: 3-Tensor Join ===
+
+// State[entity, relation, entity] - knowledge base
+// Facts: parent(0,1), parent(1,2), parent(2,3) i.e. Alice->Bob->Carol->Dave
+State = [[[0,1,0,0],[0,0,0,0],[0,0,0,0]],[[0,0,1,0],[0,0,0,0],[0,0,0,0]],[[0,0,0,1],[0,0,0,0],[0,0,0,0]],[[0,0,0,0],[0,0,0,0],[0,0,0,0]]]
+
+// Rules[derived, rel1, rel2] - composition rules
+// grandparent = parent o parent (Rules[1,0,0] = 1)
+// great-grandparent = grandparent o parent (Rules[2,1,0] = 1)
+Rules = [[[0,0,0],[0,0,0],[0,0,0]],[[1,0,0],[0,0,0],[0,0,0]],[[0,1,0],[0,0,0],[0,0,0]]]
+
+// THE KEY OPERATION: 3-tensor join derives all facts at once!
+// This is a 5-index contraction over y, r1, r2
+Derived[x,r,z] = State[x,r1,y] State[y,r2,z] Rules[r,r1,r2]
+
+// Result: Derived[x,z,r] contains:
+// - grandparent(Alice, Carol) at Derived[0,2,1]
+// - grandparent(Bob, Dave) at Derived[1,3,1]
+// Note: Output is [x,z,r] due to natural contraction order
+
+// === Also works: Simple 2-relation composition ===
+Parent = [[0,1,0,0],[0,0,1,0],[0,0,0,1],[0,0,0,0]]
+Grandparent[x,z] = Parent[x,y] Parent[y,z]
+
+// === Future: Iteration to Fixed Point ===
+// State2 = State + Derived
+// Derived2[x,r,z] = State2[x,r1,y] State2[y,r2,z] Rules[r,r1,r2]
+// (iterate until convergence)
+
+// === Why This Matters ===
+//
+// 1. LEARNABLE RULES: Rules tensor can be trained via backprop
+//    - Start with random Rules, learn from examples
+//    - Discovers logical relationships from data
+//
+// 2. NEURAL-SYMBOLIC: Combines neural learning with logical structure
+//    - Rules provide interpretable structure
+//    - Weights provide soft/probabilistic reasoning
+//
+// 3. EFFICIENT: Single tensor op does entire inference step
+//    - GPU-accelerated via Metal/CUDA
+//    - Batched over all entities at once
+//
+// 4. UNIFIED SYNTAX: Same Ein notation for:
+//    - Matrix multiply: Y[i,k] = A[i,j] B[j,k]
+//    - Attention: Attn[b,h,i,j] = Q[b,h,i,k] K[b,h,j,k]
+//    - Rule application: D[x,r,z] = S[x,r1,y] S[y,r2,z] R[r,r1,r2]
+
+// === Current Demo ===
+// Run :print Parent and :print Grandparent to see 2-relation composition

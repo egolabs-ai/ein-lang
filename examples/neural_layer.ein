@@ -1,0 +1,29 @@
+// Neural network layer example
+// Run with: cargo run examples/neural_layer.ein
+//
+// Demonstrates tensor operations in Ein:
+// - Matrix-vector multiplication (einsum)
+// - Activation functions (sigmoid, relu, step)
+// - Chained computations
+
+// Initialize weights and input
+// Note: In files, we use commands to create tensors
+:rand W1 4 3
+:rand W2 2 4
+:ones X 3
+
+// Layer 1: Linear + Sigmoid
+// H[i] = sigmoid(W1[i,j] X[j])
+// This is: h = sigmoid(W1 @ x)
+H[i] = sigmoid(W1[i,j] X[j])
+
+// Layer 2: Linear + Sigmoid
+// Y[i] = sigmoid(W2[i,k] H[k])
+// This is: y = sigmoid(W2 @ h)
+Y[i] = sigmoid(W2[i,k] H[k])
+
+// Alternative: ReLU activation
+// R[i] = relu(W1[i,j] X[j])
+
+// Alternative: Step function (binary output)
+// S[i] = step(W1[i,j] X[j])

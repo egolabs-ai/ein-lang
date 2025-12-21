@@ -1,0 +1,64 @@
+// Countries Knowledge Graph
+// A small benchmark for knowledge graph embedding
+// Based on standard KG completion task structure
+//
+// Entities: 20 countries, 15 regions, 5 languages
+// Relations: locatedIn, hasLanguage, neighborOf
+// ~100 facts for training, ~20 held out for testing
+
+// === TRAINING FACTS ===
+
+// locatedIn(country, region)
+LocatedIn(france, europe).
+LocatedIn(germany, europe).
+LocatedIn(italy, europe).
+LocatedIn(spain, europe).
+LocatedIn(uk, europe).
+LocatedIn(poland, europe).
+LocatedIn(usa, north_america).
+LocatedIn(canada, north_america).
+LocatedIn(mexico, north_america).
+LocatedIn(brazil, south_america).
+LocatedIn(argentina, south_america).
+LocatedIn(china, asia).
+LocatedIn(japan, asia).
+LocatedIn(india, asia).
+LocatedIn(australia, oceania).
+LocatedIn(egypt, africa).
+LocatedIn(south_africa, africa).
+LocatedIn(nigeria, africa).
+
+// hasLanguage(country, language)
+HasLanguage(france, french).
+HasLanguage(germany, german).
+HasLanguage(italy, italian).
+HasLanguage(spain, spanish).
+HasLanguage(uk, english).
+HasLanguage(usa, english).
+HasLanguage(canada, english).
+HasLanguage(canada, french).
+HasLanguage(mexico, spanish).
+HasLanguage(brazil, portuguese).
+HasLanguage(argentina, spanish).
+HasLanguage(china, chinese).
+HasLanguage(japan, japanese).
+HasLanguage(india, english).
+HasLanguage(australia, english).
+HasLanguage(egypt, arabic).
+HasLanguage(south_africa, english).
+HasLanguage(nigeria, english).
+
+// neighborOf(country, country) - symmetric
+NeighborOf(france, germany).
+NeighborOf(france, spain).
+NeighborOf(france, italy).
+NeighborOf(germany, poland).
+NeighborOf(spain, portugal).
+NeighborOf(usa, canada).
+NeighborOf(usa, mexico).
+NeighborOf(brazil, argentina).
+NeighborOf(china, india).
+
+// === DERIVED RELATIONS (for testing composition) ===
+// SameRegion should be derivable: SameRegion(x,y) <- LocatedIn(x,r), LocatedIn(y,r)
+// SharesLanguage should be derivable: SharesLanguage(x,y) <- HasLanguage(x,l), HasLanguage(y,l)

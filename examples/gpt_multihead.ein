@@ -1,0 +1,102 @@
+// GPT with Multi-Head Attention for Shakespeare
+// Targeting nanoGPT performance (~1.5 loss)
+//
+// Config: vocab=65, d_model=256, n_heads=4, head_dim=64, d_ff=1024
+//
+// Usage:
+//   :load_text data/tiny_shakespeare.txt seq_len=64
+//   :batch batch_size=32
+//   :load examples/gpt_multihead.ein
+//   :train Loss epochs=1000 lr=0.0003 optimizer=adamw batch_size=32
+
+// === Learnable Parameters ===
+
+// Token embeddings [vocab, d_model]
+@embedding E: vocab=65 dim=256
+
+// Multi-head attention: Q, K, V projections [d_model, d_model]
+// (internally split into n_heads=4, head_dim=64)
+@param Wq: Float[256, 256]
+@param Wk: Float[256, 256]
+@param Wv: Float[256, 256]
+@param Wo: Float[256, 256]
+
+// Feed-forward network [d_model -> d_ff -> d_model]
+@param Wff1: Float[256, 1024]
+@param Bff1: Float[1024]
+@param Wff2: Float[1024, 256]
+@param Bff2: Float[256]
+
+// Output projection [d_model, vocab]
+@param Wlm: Float[256, 65]
+
+// === Forward Pass ===
+
+// Token + position embeddings
+Tok = embed(E, Inputs)
+Pos = arange(Tok)
+PE = sin_pos(Pos, Tok)
+X0 = Tok + PE
+
+// Dimensions for multi-head attention (dynamic batch/seq, fixed model dims)
+// B and S are computed from input shape for flexibility
+B = size(X0, 0)
+S = size(X0, 1)
+D = 256
+H = 4
+K = 64
+
+// Pre-norm
+X0n = lnorm(X0)
+
+// Q, K, V projections: [B, S, D] @ [D, D] -> [B, S, D]
+Qflat[b,s,d] = X0n[b,s,k] Wq[k,d]
+Kflat[b,s,d] = X0n[b,s,k] Wk[k,d]
+Vflat[b,s,d] = X0n[b,s,k] Wv[k,d]
+
+// Reshape to [B, S, H, K] then transpose to [B, H, S, K]
+Q4 = reshape(Qflat, B, S, H, K)
+K4 = reshape(Kflat, B, S, H, K)
+V4 = reshape(Vflat, B, S, H, K)
+
+Q = transpose(Q4, 1, 2)
+Kt = transpose(K4, 1, 2)
+V = transpose(V4, 1, 2)
+
+// Attention scores: Q @ K^T / sqrt(head_dim)
+// Q: [B, H, S, K], K: [B, H, S, K] -> Scores: [B, H, S, S]
+Scores[b,h,i,j] = Q[b,h,i,k] Kt[b,h,j,k]
+Scale = sqrt(64.0)
+ScaledScores = Scores / Scale
+
+// Causal masking
+Mask = causal_mask(X0)
+MaskedScores = mask_fill(ScaledScores, Mask, neg_inf())
+
+// Attention weights and output
+Attn = softmax(MaskedScores)
+AttnOut[b,h,s,k] = Attn[b,h,s,t] V[b,h,t,k]
+
+// Reshape back: transpose [B, H, S, K] -> [B, S, H, K] -> [B, S, D]
+AttnT = transpose(AttnOut, 1, 2)
+AttnFlat = reshape(AttnT, B, S, D)
+
+// Output projection
+AttnProj[b,s,d] = AttnFlat[b,s,k] Wo[k,d]
+
+// Residual
+X1 = X0 + AttnProj
+
+// === Feed-Forward Block ===
+X1n = lnorm(X1)
+FF1[b,s,f] = X1n[b,s,d] Wff1[d,f]
+FF1b = FF1 + Bff1
+FF1a = gelu(FF1b)
+FF2[b,s,d] = FF1a[b,s,f] Wff2[f,d]
+FFOut = FF2 + Bff2
+X2 = X1 + FFOut
+
+// === Output ===
+X2n = lnorm(X2)
+Logits[b,s,v] = X2n[b,s,d] Wlm[d,v]
+Loss = cross_entropy(Logits, Targets)

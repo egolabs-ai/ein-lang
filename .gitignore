@@ -1,0 +1,18 @@
+# Build artifacts
+/target
+
+# Model checkpoints (large files)
+*.safetensors
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Python (if using for comparison/testing)
+.venv/
+__pycache__/
+*.pyc

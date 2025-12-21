@@ -1,0 +1,115 @@
+// GPT-2 Style Transformer for Shakespeare
+// 2-layer transformer with self-attention + FFN
+// Targeting nanoGPT-level performance (~1.5 val loss)
+//
+// Usage:
+//   ein
+//   :load_text data/tiny_shakespeare.txt seq_len=64
+//   :batch batch_size=32
+//   :load examples/gpt2_shakespeare.ein
+//   :train Loss epochs=200 lr=0.001 optimizer=adamw
+
+// === Model Configuration ===
+// vocab_size = 65, seq_len = 64
+// d_model = 128, d_ff = 512, n_layers = 2
+
+// === Learnable Parameters ===
+
+// Token embeddings
+@embedding E: vocab=65 dim=128
+
+// Layer 1 - Attention
+@param W1q: Float[128, 128]
+@param W1k: Float[128, 128]
+@param W1v: Float[128, 128]
+@param W1o: Float[128, 128]
+
+// Layer 1 - FFN
+@param W1ff1: Float[128, 512]
+@param B1ff1: Float[512]
+@param W1ff2: Float[512, 128]
+@param B1ff2: Float[128]
+
+// Layer 2 - Attention
+@param W2q: Float[128, 128]
+@param W2k: Float[128, 128]
+@param W2v: Float[128, 128]
+@param W2o: Float[128, 128]
+
+// Layer 2 - FFN
+@param W2ff1: Float[128, 512]
+@param B2ff1: Float[512]
+@param W2ff2: Float[512, 128]
+@param B2ff2: Float[128]
+
+// Output projection
+@param Wlm: Float[128, 65]
+
+// === Forward Pass ===
+
+// Token + position embeddings
+Tok = embed(E, Inputs)
+Pos = arange(Tok)
+PE = sin_pos(Pos, Tok)
+X0 = Tok + PE
+
+// Causal mask (shared across layers)
+Mask = causal_mask(X0)
+Scale = sqrt(128.0)
+
+// ========== Layer 1 ==========
+
+// Pre-norm + Attention
+L1n = lnorm(X0)
+Q1[b,s,d] = L1n[b,s,k] W1q[k,d]
+K1[b,s,d] = L1n[b,s,k] W1k[k,d]
+V1[b,s,d] = L1n[b,s,k] W1v[k,d]
+S1[b,i,j] = Q1[b,i,d] K1[b,j,d]
+S1s = S1 / Scale
+S1m = mask_fill(S1s, Mask, neg_inf())
+A1 = softmax(S1m)
+AV1[b,s,d] = A1[b,s,t] V1[b,t,d]
+AO1[b,s,d] = AV1[b,s,k] W1o[k,d]
+X1 = X0 + AO1
+
+// Pre-norm + FFN
+L1fn = lnorm(X1)
+F1a[b,s,f] = L1fn[b,s,d] W1ff1[d,f]
+F1b = F1a + B1ff1
+F1c = gelu(F1b)
+F1d[b,s,d] = F1c[b,s,f] W1ff2[f,d]
+F1e = F1d + B1ff2
+X2 = X1 + F1e
+
+// ========== Layer 2 ==========
+
+// Pre-norm + Attention
+L2n = lnorm(X2)
+Q2[b,s,d] = L2n[b,s,k] W2q[k,d]
+K2[b,s,d] = L2n[b,s,k] W2k[k,d]
+V2[b,s,d] = L2n[b,s,k] W2v[k,d]
+S2[b,i,j] = Q2[b,i,d] K2[b,j,d]
+S2s = S2 / Scale
+S2m = mask_fill(S2s, Mask, neg_inf())
+A2 = softmax(S2m)
+AV2[b,s,d] = A2[b,s,t] V2[b,t,d]
+AO2[b,s,d] = AV2[b,s,k] W2o[k,d]
+X3 = X2 + AO2
+
+// Pre-norm + FFN
+L2fn = lnorm(X3)
+F2a[b,s,f] = L2fn[b,s,d] W2ff1[d,f]
+F2b = F2a + B2ff1
+F2c = gelu(F2b)
+F2d[b,s,d] = F2c[b,s,f] W2ff2[f,d]
+F2e = F2d + B2ff2
+X4 = X3 + F2e
+
+// ========== Output ==========
+
+// Final layer norm + logits
+Xf = lnorm(X4)
+Logits[b,s,v] = Xf[b,s,d] Wlm[d,v]
+
+// Loss
+Loss = cross_entropy(Logits, Targets)

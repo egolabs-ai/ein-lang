@@ -1,0 +1,25 @@
+// Shakespeare Language Model Demo
+// A simple character-level bigram model in Ein
+//
+// Usage:
+//   ein
+//   :load examples/shakespeare.ein
+//   :load_text data/tiny_shakespeare.txt seq_len=8
+//   :batch batch_size=4
+//   :forward
+//   :train Loss epochs=50 lr=0.1
+
+// === Model Parameters (loaded immediately) ===
+
+// Embedding layer: maps character indices to vectors
+@embedding E: vocab=50 dim=32
+
+// Output projection: maps embedding back to vocab logits
+@param W: Float[32, 50]
+
+// === Forward Pass (defined but not evaluated until :forward) ===
+// These equations require Inputs/Targets from :batch
+
+@forward X = embed(E, Inputs)
+@forward Logits[b,s,v] = X[b,s,k] W[k,v]
+@forward Loss = cross_entropy(Logits, Targets)

@@ -1,0 +1,28 @@
+// Simple MLP Training Example
+// Learn to approximate a target function
+
+// Input data: 4 samples, 3 features
+X = [[1,0,0],[0,1,0],[0,0,1],[1,1,0]]
+
+// Target outputs
+Target = [[1,0],[0,1],[0,1],[1,1]]
+
+// Two-layer MLP
+@param W1: Float[8, 3] xavier
+@param B1: Float[8] zeros
+@param W2: Float[2, 8] xavier
+@param B2: Float[2] zeros
+
+// Forward pass
+H1[b,i] = X[b,j] W1[i,j] + B1[i]
+H1_act = relu(H1)
+Y[b,i] = H1_act[b,j] W2[i,j] + B2[i]
+
+// MSE loss
+Loss = mse(Y, Target)
+
+// Train with:
+//   :load examples/mlp.ein
+//   :train Loss epochs=100 lr=0.01
+//   :print Y
+//   :print Loss
