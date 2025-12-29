@@ -378,6 +378,55 @@ fn handle_command(cmd: &str, rt: &mut Runtime, kb: &mut KnowledgeBase, text_data
             }
         }
 
+        ":ema" => {
+            // :ema <target_param> <source_param> [tau=0.99]
+            // Performs: target = tau * target + (1-tau) * source
+            // Used for JEPA target encoder EMA updates
+            if parts.len() < 3 {
+                println!("Usage: :ema <target_param> <source_param> [tau=0.99]");
+            } else {
+                let target_name = parts[1];
+                let source_name = parts[2];
+                let mut tau = 0.99f32;
+
+                // Parse optional tau
+                for part in &parts[3..] {
+                    if let Some((key, value)) = part.split_once('=') {
+                        if key == "tau" {
+                            tau = value.parse().unwrap_or(0.99);
+                        }
+                    }
+                }
+
+                // Get source and target parameters
+                match (rt.get_param(target_name), rt.get_param(source_name)) {
+                    (Some(target_var), Some(source_var)) => {
+                        let target_tensor = target_var.as_tensor();
+                        let source_tensor = source_var.as_tensor();
+
+                        // Compute EMA update: target = tau * target + (1-tau) * source
+                        let tau_scaled = target_tensor * tau as f64;
+                        let one_minus_tau = 1.0 - tau;
+                        let one_minus_tau_scaled = source_tensor * one_minus_tau as f64;
+
+                        match tau_scaled.and_then(|t| one_minus_tau_scaled.and_then(|s| t.broadcast_add(&s))) {
+                            Ok(updated) => {
+                                if let Err(e) = target_var.set(&updated) {
+                                    println!("Error updating {}: {}", target_name, e);
+                                } else {
+                                    rt.set_tensor(target_name, updated);
+                                    println!("EMA update: {} <- {} (tau={})", target_name, source_name, tau);
+                                }
+                            }
+                            Err(e) => println!("EMA computation error: {}", e),
+                        }
+                    }
+                    (None, _) => println!("Parameter not found: {}", target_name),
+                    (_, None) => println!("Parameter not found: {}", source_name),
+                }
+            }
+        }
+
         ":load" | ":l" => {
             if parts.len() < 2 {
                 println!("Usage: :load <file.ein>");

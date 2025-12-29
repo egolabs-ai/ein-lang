@@ -628,6 +628,32 @@ impl Runtime {
                 Tensor::new(pe_data, &self.device)?.reshape(&[seq_len, embed_dim])
             }
 
+            // Gradient control: detach(x)
+            // Detaches tensor from computation graph, preventing gradients from flowing back.
+            // Critical for JEPA target encoder and other self-supervised learning methods.
+            "detach" => {
+                let a = arg()?;
+                Ok(a.detach())
+            }
+
+            // Element-wise operations
+            // max(a, b): element-wise maximum
+            "max" => {
+                let (a, b) = args2()?;
+                a.broadcast_maximum(b)
+            }
+
+            // min(a, b): element-wise minimum
+            "min" => {
+                let (a, b) = args2()?;
+                a.broadcast_minimum(b)
+            }
+
+            // abs(x): absolute value
+            "abs" => {
+                arg()?.abs()
+            }
+
             _ => Err(candle_core::Error::Msg(format!(
                 "Unknown function: {}",
                 func
