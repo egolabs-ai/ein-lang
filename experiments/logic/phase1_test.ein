@@ -1,0 +1,40 @@
+// Phase 1 Test: Counting & Reductions
+//
+// Test graph: 4-node undirected graph with 1 triangle (0-1-2)
+// Edges: 0-1, 0-2, 1-2, 2-3
+//
+// Adjacency matrix:
+//     0 1 2 3
+//   0[0 1 1 0]
+//   1[1 0 1 0]
+//   2[1 1 0 1]
+//   3[0 0 1 0]
+//
+// Expected results:
+//   trace(A) = 0 (no self-loops)
+//   diag(A) = [0,0,0,0]
+//   OutDegree = sum(A, 1) = [2, 2, 3, 1]
+//   InDegree = sum(A, 0) = [2, 2, 3, 1]
+//   TotalEdges = sum(A) = 8
+//   TriangleCount = trace(A³)/6 = 6/6 = 1
+
+A = [[0,1,1,0],[1,0,1,0],[1,1,0,1],[0,0,1,0]]
+
+// Test 1: trace() - sum of diagonal
+DiagSum = trace(A)
+
+// Test 2: diag() - extract diagonal
+Diagonal = diag(A)
+
+// Test 3: sum(x, dim) - degree computation
+OutDegree = sum(A, 1)
+InDegree = sum(A, 0)
+TotalEdges = sum(A)
+
+// Test 4: mean(x, dim)
+AvgDegree = mean(A, 1)
+
+// Triangle counting via trace(A³)/6
+A2[i,j] = A[i,k] A[k,j]
+A3[i,j] = A2[i,k] A[k,j]
+TriangleTrace = trace(A3)

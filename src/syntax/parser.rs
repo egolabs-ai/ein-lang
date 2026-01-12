@@ -80,6 +80,8 @@ impl<'a> Parser<'a> {
                 | Token::Max
                 | Token::Min
                 | Token::Abs
+                | Token::Trace
+                | Token::Diag
         )
     }
 
@@ -114,6 +116,8 @@ impl<'a> Parser<'a> {
             Token::Max => "max",
             Token::Min => "min",
             Token::Abs => "abs",
+            Token::Trace => "trace",
+            Token::Diag => "diag",
             _ => panic!("Not a function token"),
         }
     }

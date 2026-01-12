@@ -348,9 +348,86 @@ impl Runtime {
             "exp" => arg()?.exp(),
             "log" => arg()?.log(),
 
-            // Reductions (single argument)
-            "sum" => arg()?.sum_all(),
-            "mean" => arg()?.mean_all(),
+            // Reductions
+            // sum(x) - full reduction to scalar
+            // sum(x, dim) - sum along dimension, keeping dims
+            "sum" => {
+                if args.len() == 1 {
+                    args[0].sum_all()
+                } else if args.len() == 2 {
+                    let dim = if args[1].dims().is_empty() {
+                        args[1].to_scalar::<f32>()? as usize
+                    } else {
+                        args[1].flatten_all()?.to_vec1::<f32>()?[0] as usize
+                    };
+                    args[0].sum_keepdim(dim)
+                } else {
+                    Err(candle_core::Error::Msg(
+                        "sum expects 1 or 2 arguments".into()
+                    ))
+                }
+            }
+
+            // mean(x) - full reduction to scalar
+            // mean(x, dim) - mean along dimension, keeping dims
+            "mean" => {
+                if args.len() == 1 {
+                    args[0].mean_all()
+                } else if args.len() == 2 {
+                    let dim = if args[1].dims().is_empty() {
+                        args[1].to_scalar::<f32>()? as usize
+                    } else {
+                        args[1].flatten_all()?.to_vec1::<f32>()?[0] as usize
+                    };
+                    args[0].mean_keepdim(dim)
+                } else {
+                    Err(candle_core::Error::Msg(
+                        "mean expects 1 or 2 arguments".into()
+                    ))
+                }
+            }
+
+            // Trace: sum of diagonal elements for 2D matrix
+            // trace(A) where A is [n, n] -> scalar
+            "trace" => {
+                let a = arg()?;
+                let dims = a.dims();
+                if dims.len() != 2 || dims[0] != dims[1] {
+                    return Err(candle_core::Error::Msg(
+                        format!("trace requires square matrix, got shape {:?}", dims),
+                    ));
+                }
+                let n = dims[0];
+                // Extract diagonal elements
+                let mut diag_values: Vec<f32> = Vec::with_capacity(n);
+                for i in 0..n {
+                    let row = a.get(i)?;
+                    let val: f32 = row.get(i)?.to_scalar()?;
+                    diag_values.push(val);
+                }
+                let diag_tensor = Tensor::new(diag_values, a.device())?;
+                diag_tensor.sum_all()
+            }
+
+            // Diagonal extraction: diag(A) where A is [n, m] -> [min(n,m)]
+            // Returns the main diagonal of a matrix
+            "diag" => {
+                let a = arg()?;
+                let dims = a.dims();
+                if dims.len() != 2 {
+                    return Err(candle_core::Error::Msg(
+                        format!("diag requires 2D matrix, got shape {:?}", dims),
+                    ));
+                }
+                let n = dims[0].min(dims[1]);
+                let mut diag_values: Vec<f32> = Vec::with_capacity(n);
+                for i in 0..n {
+                    let row = a.get(i)?;
+                    let val: f32 = row.get(i)?.to_scalar()?;
+                    diag_values.push(val);
+                }
+                Tensor::new(diag_values, a.device())
+            }
 
             // Layer normalization (single argument, normalizes last dimension)
             "lnorm" => {
@@ -1289,4 +1366,150 @@ fn build_einsum_notation_3(
     let (notation2, _final_indices) = build_einsum_with_output_indices(&intermediate_indices, idx3);
 
     (notation1, intermediate_indices, notation2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_runtime() -> Runtime {
+        Runtime::new()
+    }
+
+    #[test]
+    fn test_trace() {
+        let rt = create_test_runtime();
+        // Create 3x3 matrix [[1,2,3],[4,5,6],[7,8,9]]
+        let data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[3, 3]).unwrap();
+
+        let result = rt.apply_function("trace", &[a]).unwrap();
+        let val: f32 = result.to_scalar().unwrap();
+
+        // trace = 1 + 5 + 9 = 15
+        assert!((val - 15.0).abs() < 1e-5, "trace should be 15, got {}", val);
+    }
+
+    #[test]
+    fn test_diag() {
+        let rt = create_test_runtime();
+        // Create 3x3 matrix [[1,2,3],[4,5,6],[7,8,9]]
+        let data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[3, 3]).unwrap();
+
+        let result = rt.apply_function("diag", &[a]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        // diag = [1, 5, 9]
+        assert_eq!(vals.len(), 3);
+        assert!((vals[0] - 1.0).abs() < 1e-5);
+        assert!((vals[1] - 5.0).abs() < 1e-5);
+        assert!((vals[2] - 9.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_sum_full() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+
+        let result = rt.apply_function("sum", &[a]).unwrap();
+        let val: f32 = result.to_scalar().unwrap();
+
+        // sum = 1+2+3+4+5+6 = 21
+        assert!((val - 21.0).abs() < 1e-5, "sum should be 21, got {}", val);
+    }
+
+    #[test]
+    fn test_sum_dim() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let dim0 = Tensor::new(&[0.0f32], rt.device()).unwrap();
+        let dim1 = Tensor::new(&[1.0f32], rt.device()).unwrap();
+
+        // Sum along dim 0: [[1,2,3],[4,5,6]] -> [[5,7,9]]
+        let result0 = rt.apply_function("sum", &[a.clone(), dim0]).unwrap();
+        assert_eq!(result0.dims(), &[1, 3]);
+        let vals0: Vec<f32> = result0.flatten_all().unwrap().to_vec1().unwrap();
+        assert!((vals0[0] - 5.0).abs() < 1e-5);
+        assert!((vals0[1] - 7.0).abs() < 1e-5);
+        assert!((vals0[2] - 9.0).abs() < 1e-5);
+
+        // Sum along dim 1: [[1,2,3],[4,5,6]] -> [[6],[15]]
+        let result1 = rt.apply_function("sum", &[a, dim1]).unwrap();
+        assert_eq!(result1.dims(), &[2, 1]);
+        let vals1: Vec<f32> = result1.flatten_all().unwrap().to_vec1().unwrap();
+        assert!((vals1[0] - 6.0).abs() < 1e-5);
+        assert!((vals1[1] - 15.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_mean_full() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+
+        let result = rt.apply_function("mean", &[a]).unwrap();
+        let val: f32 = result.to_scalar().unwrap();
+
+        // mean = 21/6 = 3.5
+        assert!((val - 3.5).abs() < 1e-5, "mean should be 3.5, got {}", val);
+    }
+
+    #[test]
+    fn test_mean_dim() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let dim1 = Tensor::new(&[1.0f32], rt.device()).unwrap();
+
+        // Mean along dim 1: [[1,2,3],[4,5,6]] -> [[2],[5]]
+        let result1 = rt.apply_function("mean", &[a, dim1]).unwrap();
+        assert_eq!(result1.dims(), &[2, 1]);
+        let vals1: Vec<f32> = result1.flatten_all().unwrap().to_vec1().unwrap();
+        assert!((vals1[0] - 2.0).abs() < 1e-5);
+        assert!((vals1[1] - 5.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_max_elementwise() {
+        let rt = create_test_runtime();
+        let a = Tensor::new(&[1.0f32, 5.0, 3.0], rt.device()).unwrap();
+        let b = Tensor::new(&[2.0f32, 3.0, 4.0], rt.device()).unwrap();
+
+        let result = rt.apply_function("max", &[a, b]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 2.0).abs() < 1e-5); // max(1,2) = 2
+        assert!((vals[1] - 5.0).abs() < 1e-5); // max(5,3) = 5
+        assert!((vals[2] - 4.0).abs() < 1e-5); // max(3,4) = 4
+    }
+
+    #[test]
+    fn test_min_elementwise() {
+        let rt = create_test_runtime();
+        let a = Tensor::new(&[1.0f32, 5.0, 3.0], rt.device()).unwrap();
+        let b = Tensor::new(&[2.0f32, 3.0, 4.0], rt.device()).unwrap();
+
+        let result = rt.apply_function("min", &[a, b]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 1.0).abs() < 1e-5); // min(1,2) = 1
+        assert!((vals[1] - 3.0).abs() < 1e-5); // min(5,3) = 3
+        assert!((vals[2] - 3.0).abs() < 1e-5); // min(3,4) = 3
+    }
+
+    #[test]
+    fn test_abs() {
+        let rt = create_test_runtime();
+        let a = Tensor::new(&[-1.0f32, 2.0, -3.0], rt.device()).unwrap();
+
+        let result = rt.apply_function("abs", &[a]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 1.0).abs() < 1e-5);
+        assert!((vals[1] - 2.0).abs() < 1e-5);
+        assert!((vals[2] - 3.0).abs() < 1e-5);
+    }
 }

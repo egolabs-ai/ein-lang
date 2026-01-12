@@ -82,6 +82,10 @@ pub enum Token {
     Mean,
     #[token("lnorm")]
     LayerNorm,
+    #[token("trace")]
+    Trace,
+    #[token("diag")]
+    Diag,
 
     // Built-in functions - loss
     #[token("cross_entropy")]
@@ -174,6 +178,8 @@ impl std::fmt::Display for Token {
             Token::Sum => write!(f, "sum"),
             Token::Mean => write!(f, "mean"),
             Token::LayerNorm => write!(f, "lnorm"),
+            Token::Trace => write!(f, "trace"),
+            Token::Diag => write!(f, "diag"),
             Token::CrossEntropy => write!(f, "cross_entropy"),
             Token::Mse => write!(f, "mse"),
             Token::Embed => write!(f, "embed"),
