@@ -1,0 +1,89 @@
+// JEPA Basic: Joint Embedding Predictive Architecture
+// Self-supervised learning via prediction in embedding space
+//
+// Architecture:
+//   Observation_t -> Encoder -> z_t
+//                                |
+//                    Predictor(z_t) -> z_hat_{t+1}
+//                                         |
+//   Observation_{t+1} -> TargetEncoder -> z_{t+1}  (stop gradient)
+//                                         |
+//                              Loss = ||z_hat - z||^2
+
+// === Configuration ===
+// Input: sequence of observations [batch, seq_len, obs_dim]
+// For video: obs_dim = flattened patch embeddings
+// For state: obs_dim = state vector dimension
+
+// === Encoder (online) ===
+@param EncW1: Float[256, 64]      // obs_dim=64 -> hidden=256
+@param EncW2: Float[128, 256]     // hidden -> embedding_dim=128
+@param EncLN_g: Float[128]
+@param EncLN_b: Float[128]
+
+// === Predictor ===
+// Predicts z_{t+1} from z_t
+// Could also condition on action: Predictor(z_t, a_t)
+@param PredW1: Float[256, 128]
+@param PredW2: Float[128, 256]
+@param PredLN_g: Float[128]
+@param PredLN_b: Float[128]
+
+// === Target Encoder (EMA of online encoder) ===
+// NOTE: In real JEPA, these are EMA copies of Enc* params
+// Use detach() on target encoder output to prevent gradient flow
+// Update target params via :ema command after each training step
+@param TgtEncW1: Float[256, 64]
+@param TgtEncW2: Float[128, 256]
+@param TgtEncLN_g: Float[128]
+@param TgtEncLN_b: Float[128]
+
+// === Forward Pass ===
+
+// Encode observation at time t
+// Input: Obs_t [batch, obs_dim]
+H_enc[b,h] = gelu(Obs_t[b,d] EncW1[h,d])
+Z_t_raw[b,e] = H_enc[b,h] EncW2[e,h]
+Z_t = lnorm(Z_t_raw)  // [batch, 128]
+
+// Predict z_{t+1}
+H_pred[b,h] = gelu(Z_t[b,e] PredW1[h,e])
+Z_hat_raw[b,e] = H_pred[b,h] PredW2[e,h]
+Z_hat = lnorm(Z_hat_raw)  // predicted embedding
+
+// Encode observation at time t+1 (target - detached to prevent gradient flow)
+// Input: Obs_t1 [batch, obs_dim]
+H_tgt[b,h] = gelu(Obs_t1[b,d] TgtEncW1[h,d])
+Z_t1_raw[b,e] = H_tgt[b,h] TgtEncW2[e,h]
+Z_t1 = detach(lnorm(Z_t1_raw))  // target embedding (no gradients)
+
+// === Loss ===
+// MSE between predicted and target embeddings
+Diff[b,e] = Z_hat[b,e] - Z_t1[b,e]
+Loss = mse(Z_hat, Z_t1)
+
+// === Training ===
+// :train Loss epochs=1000 lr=0.001 optimizer=adamw
+//
+// After each training step, update target encoder via EMA:
+// :ema TgtEncW1 EncW1 tau=0.99
+// :ema TgtEncW2 EncW2 tau=0.99
+// :ema TgtEncLN_g EncLN_g tau=0.99
+// :ema TgtEncLN_b EncLN_b tau=0.99
+
+// === Available Primitives ===
+//
+// 1. detach(tensor): Stop gradient flow (IMPLEMENTED)
+//    - Used above on Z_t1 to prevent target encoder from receiving gradients
+//
+// 2. :ema command: EMA parameter updates (IMPLEMENTED)
+//    - Usage: :ema <target> <source> [tau=0.99]
+//    - Updates: target = tau * target + (1-tau) * source
+//
+// 3. max(A, B), min(A, B), abs(A): Element-wise operations (IMPLEMENTED)
+//
+// === Still Needed ===
+//
+// 1. VICReg/Barlow Twins loss: Prevents collapse
+//    - JEPA needs variance/covariance regularization
+//    - NEEDED: var(tensor, dim), cov(tensor) functions

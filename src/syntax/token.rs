@@ -117,6 +117,18 @@ pub enum Token {
     #[token("size")]
     Size,
 
+    // Built-in functions - gradient control
+    #[token("detach")]
+    Detach,
+
+    // Built-in functions - element-wise operations
+    #[token("max")]
+    Max,
+    #[token("min")]
+    Min,
+    #[token("abs")]
+    Abs,
+
     // Identifiers (variable names, tensor names)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Ident(String),
@@ -174,6 +186,10 @@ impl std::fmt::Display for Token {
             Token::Transpose => write!(f, "transpose"),
             Token::View => write!(f, "view"),
             Token::Size => write!(f, "size"),
+            Token::Detach => write!(f, "detach"),
+            Token::Max => write!(f, "max"),
+            Token::Min => write!(f, "min"),
+            Token::Abs => write!(f, "abs"),
             Token::Ident(s) => write!(f, "{}", s),
             Token::Float(n) => write!(f, "{}", n),
             Token::Int(n) => write!(f, "{}", n),

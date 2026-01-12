@@ -76,6 +76,10 @@ impl<'a> Parser<'a> {
                 | Token::Transpose
                 | Token::View
                 | Token::Size
+                | Token::Detach
+                | Token::Max
+                | Token::Min
+                | Token::Abs
         )
     }
 
@@ -106,6 +110,10 @@ impl<'a> Parser<'a> {
             Token::Transpose => "transpose",
             Token::View => "view",
             Token::Size => "size",
+            Token::Detach => "detach",
+            Token::Max => "max",
+            Token::Min => "min",
+            Token::Abs => "abs",
             _ => panic!("Not a function token"),
         }
     }
