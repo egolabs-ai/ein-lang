@@ -1,0 +1,185 @@
+// Extreme Logic Tests in Ein
+// Testing tensor logic on hard graph reasoning problems
+//
+// Key insight: Many graph algorithms reduce to tensor operations:
+//   - Triangle counting = trace(A³)/6
+//   - Reachability = fixed-point iteration of matrix multiply
+//   - Set operations = element-wise tensor ops
+
+// ============================================================
+// TEST 1: Triangle Counting (AML / Fraud Detection)
+// ============================================================
+// "How many triangles exist in this undirected graph?"
+//
+// Tensor logic: A triangle (i,j,k) exists when A[i,j] * A[j,k] * A[k,i] = 1
+// Total triangles = sum(A[i,j] * A[j,k] * A[k,i]) / 6
+// (divide by 6 because each triangle counted 6 times: 3 vertices × 2 directions)
+
+// Test graph: 15 nodes, edges as given
+// Build adjacency matrix (symmetric for undirected)
+// A[i,j] = 1 if edge exists
+
+// For the 15-node graph with 22 edges:
+// Expected answer: 4 triangles
+
+// Triangle detection via 3-tensor contraction:
+// T[i,j,k] = A[i,j] A[j,k] A[k,i]
+// This gives 1 for each (i,j,k) that forms a triangle
+
+// In Ein:
+// TriangleIndicator[i,j,k] = A[i,j] A[j,k] A[k,i]
+// Count = sum(TriangleIndicator) / 6
+
+// NOTE: Ein needs a sum() reduction function to count
+// Workaround: use the trace for A³
+// trace(A³)[i,i,i] counts closed walks of length 3
+
+// ============================================================
+// TEST 2: Transitive Closure / Reachability
+// ============================================================
+// "List all nodes reachable from node 0"
+//
+// This IS tensor logic's sweet spot!
+// Reaches[i,j] = can reach j from i
+//
+// Base: Reaches = A (direct edges)
+// Iterate: Reaches = max(Reaches, Reaches[i,k] Reaches[k,j])
+//
+// Fixed point gives transitive closure
+
+// Build reachability for Test 3 graph (30 nodes)
+// Expected: 10 nodes reachable from 0 (nodes 0-9)
+
+@param A_test3: Float[30, 30]  // Adjacency matrix
+
+// Initialize with edges (done externally or via literals)
+
+// Transitive closure via iteration
+Reaches0[i,j] = A_test3[i,j]
+
+// Iteration 1
+R1_derived[i,j] = Reaches0[i,k] Reaches0[k,j]
+Reaches1[i,j] = max(Reaches0[i,j], R1_derived[i,j])
+
+// Iteration 2
+R2_derived[i,j] = Reaches1[i,k] Reaches1[k,j]
+Reaches2[i,j] = max(Reaches1[i,j], R2_derived[i,j])
+
+// Iteration 3
+R3_derived[i,j] = Reaches2[i,k] Reaches2[k,j]
+Reaches3[i,j] = max(Reaches2[i,j], R3_derived[i,j])
+
+// Continue until fixed point...
+// For diameter-d graphs, need d iterations
+
+// Reachable from node 0:
+// ReachableFrom0[j] = Reaches[0, j]
+
+// ============================================================
+// TEST 3: Set Intersection
+// ============================================================
+// "Which nodes are reachable from BOTH node 0 AND node 6?"
+//
+// Simple: element-wise AND (multiplication for soft logic)
+
+// Assuming we have ReachesFrom0[j] and ReachesFrom6[j]:
+// BothReachable[j] = ReachesFrom0[j] * ReachesFrom6[j]
+
+// For set difference (reachable from 0 but NOT from 6):
+// Only0[j] = ReachesFrom0[j] * (1.0 - ReachesFrom6[j])
+
+// ============================================================
+// TEST 4: Constrained Reachability (GDPR / Sanctions)
+// ============================================================
+// "Which nodes can be reached using ONLY red edges?"
+//
+// This is just transitive closure on filtered edge set!
+
+// RedEdges[i,j] = 1 if edge i->j is red, 0 otherwise
+// RedReaches = transitive_closure(RedEdges)
+
+@param RedEdges: Float[6, 6]
+@param BlueEdges: Float[6, 6]
+
+// Red-only reachability
+RedReaches0[i,j] = RedEdges[i,j]
+RedR1[i,j] = RedReaches0[i,k] RedEdges[k,j]
+RedReaches1[i,j] = max(RedReaches0[i,j], RedR1[i,j])
+RedR2[i,j] = RedReaches1[i,k] RedEdges[k,j]
+RedReaches[i,j] = max(RedReaches1[i,j], RedR2[i,j])
+
+// Red-reachable from node 0: RedReaches[0, j]
+
+// ============================================================
+// TEST 5: Strongly Connected Components
+// ============================================================
+// "Are nodes i and j in the same SCC?"
+//
+// Same SCC iff mutually reachable: can reach j from i AND i from j
+
+// SameSCC[i,j] = Reaches[i,j] * Reaches[j,i]
+
+// For the test graph:
+// SCC1 = {0,1,2} (cycle)
+// SCC2 = {3,4,5} (cycle)
+// SCC3 = {6} (singleton)
+
+// ============================================================
+// TEST 6: Clique Detection
+// ============================================================
+// "Does the graph contain a 4-clique?"
+//
+// 4-clique means all 6 edges exist between 4 nodes
+// Can detect via: if max(A[i,j] A[j,k] A[k,l] A[i,k] A[i,l] A[j,l]) = 1
+
+// For triangle (3-clique) counting:
+// Same as Test 1
+
+// ============================================================
+// WHAT EIN NEEDS FOR FULL COVERAGE
+// ============================================================
+
+// HAVE:
+// ✅ Matrix multiplication / einsum
+// ✅ max(a, b) for state union
+// ✅ Element-wise ops (+, -, *, /)
+// ✅ sigmoid for soft logic
+
+// NEED:
+// ⚠️ sum(tensor) or sum(tensor, dim) for counting
+// ⚠️ Iteration construct (currently manual unrolling)
+// ❌ Negation as failure (closed-world assumption)
+// ❌ argmax for finding specific nodes
+// ❌ Comparison ops (>, <, ==) for constraints
+
+// ============================================================
+// TRACTABLE IN EIN TODAY
+// ============================================================
+
+// 1. Triangle detection (existence): ✅
+//    T[i,j,k] = A[i,j] A[j,k] A[k,i]
+//    HasTriangle = max over all T[i,j,k]
+
+// 2. Transitive closure: ✅ (with manual unrolling)
+
+// 3. Set intersection/difference: ✅
+//    Both = R1 * R2
+//    Diff = R1 * (1 - R2)
+
+// 4. Constrained reachability: ✅
+
+// 5. SCC membership check: ✅
+//    SameSCC = Reaches * Reaches^T
+
+// 6. Clique existence: ✅ (via tensor contraction)
+
+// ============================================================
+// NOT TRACTABLE WITHOUT EXTENSIONS
+// ============================================================
+
+// 1. Counting (triangles, degrees, etc.) - needs sum()
+// 2. Negative reachability - needs closed-world negation
+// 3. Universal quantification - needs forall construct
+// 4. Bipartiteness - needs cycle detection + parity
+// 5. Articulation points - needs graph modification reasoning
+// 6. Degree computation - needs sum over axis
