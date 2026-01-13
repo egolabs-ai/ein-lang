@@ -155,6 +155,10 @@ pub enum Token {
     #[token("where")]
     Where,
 
+    // Built-in functions - clamping
+    #[token("clamp")]
+    Clamp,
+
     // Identifiers (variable names, tensor names)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Ident(String),
@@ -226,6 +230,7 @@ impl std::fmt::Display for Token {
             Token::Ge => write!(f, "ge"),
             Token::Le => write!(f, "le"),
             Token::Where => write!(f, "where"),
+            Token::Clamp => write!(f, "clamp"),
             Token::Ident(s) => write!(f, "{}", s),
             Token::Float(n) => write!(f, "{}", n),
             Token::Int(n) => write!(f, "{}", n),

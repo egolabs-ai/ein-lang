@@ -90,6 +90,7 @@ impl<'a> Parser<'a> {
                 | Token::Ge
                 | Token::Le
                 | Token::Where
+                | Token::Clamp
         )
     }
 
@@ -134,6 +135,7 @@ impl<'a> Parser<'a> {
             Token::Ge => "ge",
             Token::Le => "le",
             Token::Where => "where",
+            Token::Clamp => "clamp",
             _ => panic!("Not a function token"),
         }
     }

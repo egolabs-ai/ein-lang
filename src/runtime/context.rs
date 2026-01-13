@@ -812,6 +812,23 @@ impl Runtime {
                 cond_bool.where_cond(a, b)
             }
 
+            // clamp(x, min, max): clamp values to range [min, max]
+            "clamp" => {
+                if args.len() != 3 {
+                    return Err(candle_core::Error::Msg(format!(
+                        "clamp expects 3 arguments, got {}",
+                        args.len()
+                    )));
+                }
+                let x = &args[0];
+                let min_val = &args[1];
+                let max_val = &args[2];
+                // Broadcast min/max to match x's shape for Candle's clamp
+                let min_broadcast = min_val.broadcast_as(x.shape())?;
+                let max_broadcast = max_val.broadcast_as(x.shape())?;
+                x.clamp(&min_broadcast, &max_broadcast)
+            }
+
             _ => Err(candle_core::Error::Msg(format!(
                 "Unknown function: {}",
                 func
@@ -2004,5 +2021,23 @@ mod tests {
 
         // Closest node is index 1 (score 0.9)
         assert!((closest - 1.0).abs() < 1e-5, "closest node should be 1, got {}", closest);
+    }
+
+    // Phase 3: Control Flow tests
+
+    #[test]
+    fn test_clamp() {
+        let rt = create_test_runtime();
+        let x = Tensor::new(&[-2.0f32, 0.5, 1.5, 3.0], rt.device()).unwrap();
+        let min_val = Tensor::new(&[0.0f32], rt.device()).unwrap();
+        let max_val = Tensor::new(&[1.0f32], rt.device()).unwrap();
+
+        let result = rt.apply_function("clamp", &[x, min_val, max_val]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 0.0).abs() < 1e-5); // -2 clamped to 0
+        assert!((vals[1] - 0.5).abs() < 1e-5); // 0.5 unchanged
+        assert!((vals[2] - 1.0).abs() < 1e-5); // 1.5 clamped to 1
+        assert!((vals[3] - 1.0).abs() < 1e-5); // 3 clamped to 1
     }
 }

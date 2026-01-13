@@ -2,8 +2,8 @@
 
 ## Current Status
 
-**Phase:** Phase 2 (Selection & Comparison) - Complete
-**Last Updated:** 2026-01-12
+**Phase:** Phase 3 (Control Flow & Iteration) - Complete
+**Last Updated:** 2026-01-13
 **Target:** `experiments/logic/extreme_logic_tests.ein`
 
 ---
@@ -24,19 +24,48 @@ Tests tensor logic on hard graph reasoning problems:
 
 ---
 
-## In Progress
-
-### Phase 3: Control Flow & Iteration
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| `:iterate N` | Not started | Loop N times in REPL |
-| `:until_stable` | Not started | Iterate until convergence |
-| `clamp(x, min, max)` | Not started | Clamp values to range |
-
----
-
 ## Completed Work
+
+### 2026-01-13: Phase 3 - Control Flow & Iteration
+
+**Commit:** (pending)
+
+**Features Added:**
+- `:iterate N <stmt>` - Execute statement N times in REPL
+- `:until_stable <tensor> <stmt>` - Iterate until tensor converges (max 100 iter, tol 1e-6)
+- `clamp(x, min, max)` - Clamp values to range with broadcasting support
+
+**Files Modified:**
+- `src/syntax/token.rs` - Added Clamp token
+- `src/syntax/parser.rs` - Added clamp to function recognition
+- `src/runtime/context.rs` - Implemented clamp with broadcasting + unit test
+- `src/main.rs` - Added :iterate and :until_stable commands, updated help
+
+**Test Results:**
+```
+cargo test --lib runtime::context::tests
+running 36 tests
+test result: ok. 36 passed; 0 failed;
+```
+
+**REPL Verification:**
+```
+// Transitive closure via :iterate
+A = [[0,1,0,0],[0,0,1,0],[0,0,0,1],[0,0,0,0]]
+R = A
+:iterate 3 R[i,j] = max(R[i,j], R[i,k] R[k,j])
+// R now contains full reachability matrix
+
+// Automatic convergence
+R = A
+:until_stable R R[i,j] = max(R[i,j], R[i,k] R[k,j])
+// Converges after 3 iterations
+```
+
+**Use Cases Enabled:**
+- Fixed-point iteration: `:iterate N` for known graph diameter
+- Convergence-based iteration: `:until_stable` for unknown iteration count
+- Value clamping: `clamp(x, 0, 1)` for normalization bounds
 
 ### 2026-01-12: Phase 2 - Selection & Comparison
 
@@ -113,7 +142,7 @@ Degree computation:  sum(A, dim) ✅
 
 ### Extreme Logic Tests Status
 ```
-Transitive closure:  ✅ Works (manual iteration)
+Transitive closure:  ✅ Works (:iterate / :until_stable)
 Set operations:      ✅ Works
 SCC membership:      ✅ Works
 Clique existence:    ✅ Works
@@ -121,17 +150,19 @@ Triangle counting:   ✅ Works (trace(A³)/6)
 Degree computation:  ✅ Works (sum(A, dim))
 Finding witnesses:   ✅ Works (argmax(x, dim))
 Conditional paths:   ✅ Works (where(cond, a, b))
-Auto fixed-point:    ❌ Needs :iterate command
+Auto fixed-point:    ✅ Works (:until_stable)
 ```
+
+**All target capabilities implemented!**
 
 ---
 
 ## Upcoming
 
-### Phase 3: Control Flow
-- `:iterate N` command - Run statements N times
-- `:until_stable` command - Iterate until convergence
-- `clamp(x, min, max)` - Clamp values to range
+Potential future enhancements:
+- Sparse tensor support for large graphs
+- Batch graph operations
+- More iteration control (early exit conditions)
 
 ---
 
@@ -139,6 +170,7 @@ Auto fixed-point:    ❌ Needs :iterate command
 
 | Date | Commit | Description |
 |------|--------|-------------|
+| 2026-01-13 | (pending) | Phase 3: :iterate, :until_stable, clamp |
 | 2026-01-12 | (pending) | Phase 2: argmax, argmin, comparison ops, where |
 | 2026-01-12 | (pending) | Phase 1: trace, diag, sum(dim), mean(dim) |
 | 2026-01-12 | (pending) | Foundation: detach, max, min, abs, :ema |
