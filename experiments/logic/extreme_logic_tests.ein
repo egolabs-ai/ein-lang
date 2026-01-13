@@ -1,0 +1,77 @@
+// Graph Logic Examples in Ein
+// Tensor operations for graph reasoning problems
+
+// ============================================================
+// Triangle Counting
+// ============================================================
+// A triangle (i,j,k) exists when A[i,j] * A[j,k] * A[k,i] = 1
+// Total triangles = trace(A^3) / 6
+// (divide by 6: each triangle counted 3 vertices x 2 directions)
+
+// Triangle detection via 3-tensor contraction:
+// T[i,j,k] = A[i,j] A[j,k] A[k,i]
+
+// ============================================================
+// Transitive Closure / Reachability
+// ============================================================
+// Reaches[i,j] = can reach j from i
+//
+// Base: Reaches = A (direct edges)
+// Iterate: Reaches = max(Reaches, Reaches[i,k] Reaches[k,j])
+// Fixed point gives transitive closure
+
+@param A_test3: Float[30, 30]
+
+Reaches0[i,j] = A_test3[i,j]
+
+// Iteration 1
+R1_derived[i,j] = Reaches0[i,k] Reaches0[k,j]
+Reaches1[i,j] = max(Reaches0[i,j], R1_derived[i,j])
+
+// Iteration 2
+R2_derived[i,j] = Reaches1[i,k] Reaches1[k,j]
+Reaches2[i,j] = max(Reaches1[i,j], R2_derived[i,j])
+
+// Iteration 3
+R3_derived[i,j] = Reaches2[i,k] Reaches2[k,j]
+Reaches3[i,j] = max(Reaches2[i,j], R3_derived[i,j])
+
+// Continue until fixed point (for diameter-d graphs, need d iterations)
+// Or use: :until_stable Reaches R[i,j] = max(R[i,j], R[i,k] R[k,j])
+
+// ============================================================
+// Set Intersection / Difference
+// ============================================================
+// "Which nodes are reachable from BOTH node 0 AND node 6?"
+// BothReachable[j] = ReachesFrom0[j] * ReachesFrom6[j]
+
+// For set difference (reachable from 0 but NOT from 6):
+// Only0[j] = ReachesFrom0[j] * (1.0 - ReachesFrom6[j])
+
+// ============================================================
+// Constrained Reachability
+// ============================================================
+// "Which nodes can be reached using ONLY red edges?"
+// Just transitive closure on filtered edge set
+
+@param RedEdges: Float[6, 6]
+@param BlueEdges: Float[6, 6]
+
+// Red-only reachability
+RedReaches0[i,j] = RedEdges[i,j]
+RedR1[i,j] = RedReaches0[i,k] RedEdges[k,j]
+RedReaches1[i,j] = max(RedReaches0[i,j], RedR1[i,j])
+RedR2[i,j] = RedReaches1[i,k] RedEdges[k,j]
+RedReaches[i,j] = max(RedReaches1[i,j], RedR2[i,j])
+
+// ============================================================
+// Strongly Connected Components
+// ============================================================
+// Same SCC iff mutually reachable: can reach j from i AND i from j
+// SameSCC[i,j] = Reaches[i,j] * Reaches[j,i]
+
+// ============================================================
+// Clique Detection
+// ============================================================
+// 4-clique: all 6 edges exist between 4 nodes
+// Detect via: max(A[i,j] A[j,k] A[k,l] A[i,k] A[i,l] A[j,l]) = 1

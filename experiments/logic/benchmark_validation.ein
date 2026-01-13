@@ -1,0 +1,167 @@
+// Graph Logic Benchmarks
+// Complete test suite with comparisons, argmax, where, sigmoid
+
+// ============================================================
+// TEST 1: Triangle Counting - 15 nodes
+// ============================================================
+// Expected: 4 triangles
+
+A15 = [[0,1,0,0,0,0,0,0,0,1,0,0,0,0,1],[1,0,1,1,1,0,0,0,0,0,0,0,0,0,0],[0,1,0,0,0,1,0,0,0,1,0,0,1,0,0],[0,1,0,0,0,0,0,1,0,0,0,0,0,0,0],[0,1,0,0,0,0,0,0,1,0,0,0,0,0,0],[0,0,1,0,0,0,0,1,0,1,0,0,0,1,0],[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],[0,0,0,1,0,1,0,0,0,0,1,0,0,1,0],[0,0,0,0,1,0,0,0,0,0,0,0,0,0,0],[1,0,1,0,0,1,0,0,0,0,1,1,0,0,1],[0,0,0,0,0,0,0,1,0,1,0,0,0,0,1],[0,0,0,0,0,0,0,0,0,1,0,0,1,0,0],[0,0,1,0,0,0,1,0,0,0,0,1,0,0,0],[0,0,0,0,0,1,0,1,0,0,0,0,0,0,0],[1,0,0,0,0,0,0,0,0,1,1,0,0,0,0]]
+
+A15_2[i,j] = A15[i,k] A15[k,j]
+A15_3[i,j] = A15_2[i,k] A15[k,j]
+Triangles15 = trace(A15_3) / 6.0
+
+:print "=== TEST 1: Triangle Count (15 nodes) ==="
+:print "Expected: 4"
+:print Triangles15
+
+// ============================================================
+// TEST 2: Clique Detection - 11 nodes
+// ============================================================
+// Nodes {0,1,2,3} form a 4-clique
+// Expected: 5 triangles
+
+A11 = [[0,1,1,1,1,0,0,0,0,0,0],[1,0,1,1,0,0,0,0,0,0,0],[1,1,0,1,0,0,0,0,0,0,0],[1,1,1,0,0,0,0,1,0,0,0],[1,0,0,0,0,1,0,0,0,0,0],[0,0,0,0,1,0,1,0,0,0,0],[0,0,0,0,0,1,0,1,0,0,0],[0,0,0,1,0,0,1,0,0,0,0],[0,0,0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,0,1,0,1],[0,0,0,0,0,0,0,0,1,1,0]]
+
+A11_2[i,j] = A11[i,k] A11[k,j]
+A11_3[i,j] = A11_2[i,k] A11[k,j]
+Triangles11 = trace(A11_3) / 6.0
+
+// Triangles per node (diagonal of A^3)
+TrianglesPerNode11 = diag(A11_3)
+
+// Node with most triangle participation
+MaxTriangleNode11 = argmax(TrianglesPerNode11, 0)
+
+:print "=== TEST 2: Clique/Triangle Detection (11 nodes) ==="
+:print "Expected: 5 triangles"
+:print Triangles11
+:print "Triangles per node:"
+:print TrianglesPerNode11
+:print "Node with most triangle participation:"
+:print MaxTriangleNode11
+
+// ============================================================
+// TEST 3: Degree Computation - 20 nodes (directed)
+// ============================================================
+// Max in-degree: 5 at nodes 7 and 17
+
+A20 = [[0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],[0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,1,0],[1,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,1,0,0],[0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,0,0,0,0,0],[0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0],[0,1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[1,1,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[0,1,0,1,0,0,0,0,1,0,0,0,1,0,0,0,0,0,0,0],[0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0],[0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,1,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0]]
+
+InDegree20 = sum(A20, 0)
+OutDegree20 = sum(A20, 1)
+
+// Find node with max in-degree
+MaxInDegreeNode20 = argmax(InDegree20, 1)
+
+// Which nodes have in-degree == 5?
+HasMaxInDegree = eq(InDegree20, 5.0)
+
+// Nodes with in-degree=2
+InDeg2 = eq(InDegree20, 2.0)
+
+:print "=== TEST 3: Degree Computation (20 nodes) ==="
+:print "In-degrees:"
+:print InDegree20
+:print "Node with max in-degree:"
+:print MaxInDegreeNode20
+:print "Nodes with in-degree == 5:"
+:print HasMaxInDegree
+:print "Nodes with in-degree == 2:"
+:print InDeg2
+
+// ============================================================
+// TEST 4: SCC Detection - 7 nodes (directed)
+// ============================================================
+// Expected: 3 SCCs: {0,1,2}, {3,4,5}, {6}
+
+A7 = [[0,1,0,0,0,0,0],[0,0,1,0,0,0,0],[1,0,0,1,0,0,0],[0,0,0,0,1,0,0],[0,0,0,0,0,1,0],[0,0,0,1,0,0,0],[1,0,0,0,0,0,0]]
+
+// Transitive closure
+R0[i,j] = A7[i,j]
+R1t[i,j] = R0[i,k] R0[k,j]
+R1[i,j] = max(R0[i,j], R1t[i,j])
+R2t[i,j] = R1[i,k] R1[k,j]
+R2[i,j] = max(R1[i,j], R2t[i,j])
+R3t[i,j] = R2[i,k] R2[k,j]
+Reaches7_raw[i,j] = max(R2[i,j], R3t[i,j])
+
+// Convert to binary
+Reaches7[i,j] = gt(Reaches7_raw[i,j], 0.0)
+
+// Same SCC = mutually reachable
+SameSCC_raw[i,j] = Reaches7[i,j] * Reaches7[j,i]
+
+// Mark diagonal
+Identity7 = [[1,0,0,0,0,0,0],[0,1,0,0,0,0,0],[0,0,1,0,0,0,0],[0,0,0,1,0,0,0],[0,0,0,0,1,0,0],[0,0,0,0,0,1,0],[0,0,0,0,0,0,1]]
+SameSCC[i,j] = max(SameSCC_raw[i,j], Identity7[i,j])
+
+:print "=== TEST 4: SCC Detection (7 nodes) ==="
+:print "Binary reachability matrix:"
+:print Reaches7
+:print "Same-SCC matrix (3 diagonal blocks: {0,1,2}, {3,4,5}, {6}):"
+:print SameSCC
+
+// ============================================================
+// TEST 5: Path Counting - 8 nodes (DAG)
+// ============================================================
+// Paths of length 3 from 0 to 7: Expected 7
+
+A8 = [[0,1,1,1,0,0,0,0],[0,0,0,0,1,1,0,0],[0,0,0,0,1,1,1,0],[0,0,0,0,0,1,1,0],[0,0,0,0,0,0,0,1],[0,0,0,0,0,0,0,1],[0,0,0,0,0,0,0,1],[0,0,0,0,0,0,0,0]]
+
+A8_2[i,j] = A8[i,k] A8[k,j]
+A8_3[i,j] = A8_2[i,k] A8[k,j]
+
+:print "=== TEST 5: Path Counting (8-node DAG) ==="
+:print "A^3 matrix (element [0,7] = paths from 0 to 7, expected: 7):"
+:print A8_3
+
+// ============================================================
+// TEST 6: Negative Reachability (Closed-World)
+// ============================================================
+// "Which nodes are NOT reachable from node 0?"
+
+ReachableFrom0_7 = [[1,0,0,0,0,0,0]]
+ReachFrom0[j] = ReachableFrom0_7[i,k] Reaches7[k,j]
+
+// NOT reachable = 1 - reachable
+Ones7 = [[1,1,1,1,1,1,1]]
+NotReachableFrom0[j] = Ones7[i,j] - ReachFrom0[j]
+
+:print "=== TEST 6: Negative Reachability (7 nodes) ==="
+:print "Reachable from node 0:"
+:print ReachFrom0
+:print "NOT reachable from node 0 (expect node 6 only):"
+:print NotReachableFrom0
+
+// ============================================================
+// TEST 7: Conditional Logic with where()
+// ============================================================
+// Find high-degree nodes (degree > 3)
+
+HighDegreeThreshold = 3.0
+IsHighDegree = gt(InDegree20, HighDegreeThreshold)
+
+// Create a mask for high-degree nodes
+Zeros20 = [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]]
+HighDegreeNodes = where(IsHighDegree, InDegree20, Zeros20)
+
+:print "=== TEST 7: Conditional Selection ==="
+:print "Is high degree (in-degree > 3):"
+:print IsHighDegree
+:print "High degree values (0 for low degree):"
+:print HighDegreeNodes
+
+// ============================================================
+// TEST 8: Sanity Check - 4 node triangle
+// ============================================================
+
+A4 = [[0,1,1,0],[1,0,1,0],[1,1,0,1],[0,0,1,0]]
+A4_2[i,j] = A4[i,k] A4[k,j]
+A4_3[i,j] = A4_2[i,k] A4[k,j]
+Triangles4 = trace(A4_3) / 6.0
+
+:print "=== TEST 8: Sanity Check (4 nodes, 1 triangle) ==="
+:print "Expected: 1"
+:print Triangles4

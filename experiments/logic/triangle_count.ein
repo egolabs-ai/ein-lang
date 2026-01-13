@@ -1,0 +1,18 @@
+// Triangle Counting in Ein
+// Test: 15 nodes, 22 edges, expected 4 triangles
+
+// Smaller test first: 7-node graph with known triangle
+// Edges: (0,1), (1,2), (2,0), (0,3), (3,4), (4,5), (5,6), (6,4)
+// Triangle: (0,1,2)
+
+A = [[0,1,1,1,0,0,0],[1,0,1,0,0,0,0],[1,1,0,0,0,0,0],[1,0,0,0,1,0,0],[0,0,0,1,0,1,1],[0,0,0,0,1,0,1],[0,0,0,0,1,1,0]]
+
+// A² = paths of length 2
+A2[i,k] = A[i,j] A[j,k]
+
+// A³ = paths of length 3 (closed walks)
+A3[i,j] = A2[i,k] A[k,j]
+
+:print A
+:print A2
+:print A3

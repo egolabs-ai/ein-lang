@@ -80,6 +80,17 @@ impl<'a> Parser<'a> {
                 | Token::Max
                 | Token::Min
                 | Token::Abs
+                | Token::Trace
+                | Token::Diag
+                | Token::Argmax
+                | Token::Argmin
+                | Token::Gt
+                | Token::Lt
+                | Token::EqCmp
+                | Token::Ge
+                | Token::Le
+                | Token::Where
+                | Token::Clamp
         )
     }
 
@@ -114,6 +125,17 @@ impl<'a> Parser<'a> {
             Token::Max => "max",
             Token::Min => "min",
             Token::Abs => "abs",
+            Token::Trace => "trace",
+            Token::Diag => "diag",
+            Token::Argmax => "argmax",
+            Token::Argmin => "argmin",
+            Token::Gt => "gt",
+            Token::Lt => "lt",
+            Token::EqCmp => "eq",
+            Token::Ge => "ge",
+            Token::Le => "le",
+            Token::Where => "where",
+            Token::Clamp => "clamp",
             _ => panic!("Not a function token"),
         }
     }

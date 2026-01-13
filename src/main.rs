@@ -690,6 +690,143 @@ fn handle_command(cmd: &str, rt: &mut Runtime, kb: &mut KnowledgeBase, text_data
             }
         }
 
+        ":iterate" => {
+            // :iterate N <statement>
+            // Execute a statement N times for fixed-point iteration
+            if parts.len() < 3 {
+                println!("Usage: :iterate N <statement>");
+                println!("Example: :iterate 10 R[i,j] = max(R[i,j], R[i,k] R[k,j])");
+            } else {
+                let n: usize = match parts[1].parse() {
+                    Ok(n) => n,
+                    Err(_) => {
+                        println!("Invalid iteration count: {}", parts[1]);
+                        return true;
+                    }
+                };
+
+                // Reconstruct the statement from remaining parts
+                let stmt_start = cmd.find(parts[2]).unwrap_or(0);
+                let statement = &cmd[stmt_start..];
+
+                println!("Iterating {} times: {}", n, statement);
+                for i in 0..n {
+                    match rt.eval(statement) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            println!("Error at iteration {}: {}", i + 1, e);
+                            break;
+                        }
+                    }
+                }
+
+                // Show final result - extract tensor name from statement
+                if let Some(eq_pos) = statement.find('=') {
+                    let lhs = statement[..eq_pos].trim();
+                    // Extract just the tensor name (before any indices)
+                    let tensor_name = lhs.split('[').next().unwrap_or(lhs).trim();
+                    if let Some(t) = rt.get_tensor(tensor_name) {
+                        println!("After {} iterations:", n);
+                        print_tensor(tensor_name, t);
+                    }
+                }
+            }
+        }
+
+        ":until_stable" => {
+            // :until_stable <tensor> <statement> [max_iter=100] [tol=1e-6]
+            // Execute statement until tensor stops changing
+            if parts.len() < 3 {
+                println!("Usage: :until_stable <tensor> <statement> [max_iter=N] [tol=F]");
+                println!("Example: :until_stable R R[i,j] = max(R[i,j], R[i,k] R[k,j])");
+            } else {
+                let tensor_name = parts[1];
+                let mut max_iter = 100usize;
+                let mut tol = 1e-6f32;
+
+                // Parse optional parameters
+                let mut stmt_parts: Vec<&str> = Vec::new();
+                for part in &parts[2..] {
+                    if let Some((key, value)) = part.split_once('=') {
+                        match key {
+                            "max_iter" => max_iter = value.parse().unwrap_or(100),
+                            "tol" => tol = value.parse().unwrap_or(1e-6),
+                            _ => stmt_parts.push(part),
+                        }
+                    } else {
+                        stmt_parts.push(part);
+                    }
+                }
+
+                // Reconstruct the statement
+                let statement = stmt_parts.join(" ");
+                if statement.is_empty() {
+                    println!("No statement provided");
+                    return true;
+                }
+
+                // Check that tensor exists
+                if rt.get_tensor(tensor_name).is_none() {
+                    println!("Tensor '{}' not found. Initialize it first.", tensor_name);
+                    return true;
+                }
+
+                println!("Iterating until {} is stable (max={}, tol={}):", tensor_name, max_iter, tol);
+                println!("  {}", statement);
+
+                let mut iterations = 0;
+                loop {
+                    // Get current tensor value
+                    let prev = rt.get_tensor(tensor_name).unwrap().clone();
+
+                    // Execute statement
+                    match rt.eval(&statement) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            println!("Error at iteration {}: {}", iterations + 1, e);
+                            break;
+                        }
+                    }
+
+                    iterations += 1;
+
+                    // Get new tensor value and check for convergence
+                    let curr = rt.get_tensor(tensor_name).unwrap();
+
+                    // Compute max absolute difference
+                    let diff = match (&prev - curr) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            println!("Error computing difference: {}", e);
+                            break;
+                        }
+                    };
+                    let max_diff: f32 = match diff.abs() {
+                        Ok(d) => match d.max_all() {
+                            Ok(m) => m.to_scalar().unwrap_or(f32::MAX),
+                            Err(_) => f32::MAX,
+                        },
+                        Err(_) => f32::MAX,
+                    };
+
+                    if max_diff < tol {
+                        println!("Converged after {} iterations (max_diff={:.2e})", iterations, max_diff);
+                        break;
+                    }
+
+                    if iterations >= max_iter {
+                        println!("Reached max iterations ({}) without converging (max_diff={:.2e})", max_iter, max_diff);
+                        break;
+                    }
+                }
+
+                // Show final result
+                if let Some(t) = rt.get_tensor(tensor_name) {
+                    print_tensor(tensor_name, t);
+                }
+            }
+        }
+
         ":train_kb" => {
             // :train_kb [epochs=100] [lr=0.001] [dim=128] [batch_size=128] [neg_ratio=10] [margin=1.0]
             if let Some(kd) = kb_data {
@@ -855,6 +992,12 @@ fn print_help() {
   :ones <n> <d..>   Create ones tensor
   :rand <n> <d..>   Create random tensor
   :clear            Clear all state
+
+Iteration (fixed-point algorithms):
+  :iterate N <stmt>               Execute statement N times
+  :until_stable <tensor> <stmt>   Execute until tensor converges
+    Example: :iterate 10 R[i,j] = max(R[i,j], R[i,k] R[k,j])
+    Example: :until_stable R R[i,j] = max(R[i,j], R[i,k] R[k,j])
 
 Checkpoints:
   :save <path.safetensors>        Save model parameters
