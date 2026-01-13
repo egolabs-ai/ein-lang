@@ -1,0 +1,120 @@
+// Soft Logic Test
+// Testing graph operations with probabilistic/soft adjacency matrices
+//
+// In soft mode, A[i,j] is a probability in [0,1] rather than hard 0/1
+// Operations should compose probabilities naturally
+
+// ============================================================
+// TEST 1: Soft Triangle Detection
+// ============================================================
+// Soft adjacency: edges have confidence scores
+// Edge 0->1: 0.9, 1->2: 0.8, 2->0: 0.7 (forms a soft triangle)
+// Edge 2->3: 0.6 (not part of triangle)
+
+SoftA = [[0.0,0.9,0.0,0.0],[0.0,0.0,0.8,0.0],[0.7,0.0,0.0,0.6],[0.0,0.0,0.0,0.0]]
+
+// A^2 = paths of length 2 (soft composition)
+SoftA2[i,j] = SoftA[i,k] SoftA[k,j]
+
+// A^3 = paths of length 3
+SoftA3[i,j] = SoftA2[i,k] SoftA[k,j]
+
+// Soft triangle score = trace(A^3) / 6
+// Higher values = stronger triangle evidence
+SoftTriangleScore = trace(SoftA3) / 6.0
+
+:print "=== Soft Triangle Detection ==="
+:print "Soft adjacency matrix:"
+:print SoftA
+:print "A^2 (2-hop soft paths):"
+:print SoftA2
+:print "A^3 (3-hop soft paths):"
+:print SoftA3
+:print "Soft triangle score (trace(A^3)/6):"
+:print SoftTriangleScore
+
+// ============================================================
+// TEST 2: Soft Reachability with Threshold
+// ============================================================
+// Compute soft transitive closure, then threshold to get hard reachability
+
+R0[i,j] = SoftA[i,j]
+R1t[i,j] = R0[i,k] R0[k,j]
+R1[i,j] = max(R0[i,j], R1t[i,j])
+R2t[i,j] = R1[i,k] R1[k,j]
+SoftReaches[i,j] = max(R1[i,j], R2t[i,j])
+
+// Threshold at 0.5 to get "confident" reachability
+ConfidentReaches = gt(SoftReaches, 0.5)
+
+:print "=== Soft Reachability ==="
+:print "Soft reachability matrix (max-product closure):"
+:print SoftReaches
+:print "Confident reachability (threshold > 0.5):"
+:print ConfidentReaches
+
+// ============================================================
+// TEST 3: Soft Degree with Comparison
+// ============================================================
+// Sum of edge weights = soft degree
+
+SoftOutDegree = sum(SoftA, 1)
+SoftInDegree = sum(SoftA, 0)
+
+// Find nodes with high connectivity (soft degree > 0.5)
+HighConnectivity = gt(SoftOutDegree, 0.5)
+
+:print "=== Soft Degree Computation ==="
+:print "Soft out-degree (sum of outgoing edge weights):"
+:print SoftOutDegree
+:print "Soft in-degree:"
+:print SoftInDegree
+:print "High connectivity nodes (degree > 0.5):"
+:print HighConnectivity
+
+// ============================================================
+// TEST 4: Soft-to-Hard Conversion with where()
+// ============================================================
+// Use soft scores to select between alternatives
+
+LowConfidence = [[0.1],[0.2],[0.3],[0.4]]
+HighConfidence = [[0.9],[0.8],[0.7],[0.6]]
+
+// Select high confidence where soft degree > 0.5, else low
+Selected = where(HighConnectivity, HighConfidence, LowConfidence)
+
+:print "=== Soft-to-Hard Selection ==="
+:print "Selected values (high if connected, low otherwise):"
+:print Selected
+
+// ============================================================
+// TEST 5: Learned Edge Weights (Simulated)
+// ============================================================
+// In a real scenario, these could be learned embeddings
+// EdgeScore[i,j] = dot(entity_emb[i], entity_emb[j])
+
+// Simulated entity embeddings (4 entities, 3D)
+EntityEmb = [[0.8,0.1,0.2],[0.7,0.2,0.1],[0.1,0.9,0.3],[0.2,0.1,0.8]]
+
+// Compute pairwise similarity (soft adjacency from embeddings)
+// This is what a knowledge graph embedding would produce
+LearnedAdj[i,j] = EntityEmb[i,k] EntityEmb[j,k]
+
+// Normalize with sigmoid for probabilities
+LearnedProb = sigmoid(LearnedAdj)
+
+:print "=== Learned Edge Weights ==="
+:print "Entity embeddings (4 entities, 3D):"
+:print EntityEmb
+:print "Learned adjacency (dot product similarity):"
+:print LearnedAdj
+:print "Soft probabilities (sigmoid normalized):"
+:print LearnedProb
+
+// Triangle detection on learned graph
+LearnedA2[i,j] = LearnedProb[i,k] LearnedProb[k,j]
+LearnedA3[i,j] = LearnedA2[i,k] LearnedProb[k,j]
+LearnedTriangles = trace(LearnedA3) / 6.0
+
+:print "Learned triangle score:"
+:print LearnedTriangles
