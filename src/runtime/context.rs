@@ -731,6 +731,87 @@ impl Runtime {
                 arg()?.abs()
             }
 
+            // Selection functions
+            // argmax(x, dim): index of maximum value along dimension
+            "argmax" => {
+                let (x, dim_tensor) = args2()?;
+                let dim = if dim_tensor.dims().is_empty() {
+                    dim_tensor.to_scalar::<f32>()? as usize
+                } else {
+                    dim_tensor.flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                let result = x.argmax(dim)?;
+                // Convert to f32 for consistency
+                result.to_dtype(DType::F32)
+            }
+
+            // argmin(x, dim): index of minimum value along dimension
+            "argmin" => {
+                let (x, dim_tensor) = args2()?;
+                let dim = if dim_tensor.dims().is_empty() {
+                    dim_tensor.to_scalar::<f32>()? as usize
+                } else {
+                    dim_tensor.flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                let result = x.argmin(dim)?;
+                // Convert to f32 for consistency
+                result.to_dtype(DType::F32)
+            }
+
+            // Comparison functions (return 0/1 tensors)
+            // gt(a, b): element-wise greater than
+            "gt" => {
+                let (a, b) = args2()?;
+                let result = a.broadcast_gt(b)?;
+                result.to_dtype(DType::F32)
+            }
+
+            // lt(a, b): element-wise less than
+            "lt" => {
+                let (a, b) = args2()?;
+                let result = a.broadcast_lt(b)?;
+                result.to_dtype(DType::F32)
+            }
+
+            // eq(a, b): element-wise equality
+            "eq" => {
+                let (a, b) = args2()?;
+                let result = a.broadcast_eq(b)?;
+                result.to_dtype(DType::F32)
+            }
+
+            // ge(a, b): element-wise greater than or equal
+            "ge" => {
+                let (a, b) = args2()?;
+                let result = a.broadcast_ge(b)?;
+                result.to_dtype(DType::F32)
+            }
+
+            // le(a, b): element-wise less than or equal
+            "le" => {
+                let (a, b) = args2()?;
+                let result = a.broadcast_le(b)?;
+                result.to_dtype(DType::F32)
+            }
+
+            // Conditional selection
+            // where(cond, a, b): select from a where cond is true, else b
+            "where" => {
+                if args.len() != 3 {
+                    return Err(candle_core::Error::Msg(format!(
+                        "where expects 3 arguments, got {}",
+                        args.len()
+                    )));
+                }
+                let cond = &args[0];
+                let a = &args[1];
+                let b = &args[2];
+                // Convert condition to bool (non-zero = true)
+                let zero = Tensor::zeros_like(cond)?;
+                let cond_bool = cond.broadcast_ne(&zero)?;
+                cond_bool.where_cond(a, b)
+            }
+
             _ => Err(candle_core::Error::Msg(format!(
                 "Unknown function: {}",
                 func
@@ -1739,5 +1820,189 @@ mod tests {
         assert!((vals[0] - 0.0).abs() < 1e-5);           // tanh(0) = 0
         assert!((vals[1] - 0.7615942).abs() < 1e-5);     // tanh(1) ≈ 0.762
         assert!((vals[2] - (-0.7615942)).abs() < 1e-5);  // tanh(-1) ≈ -0.762
+    }
+
+    // Phase 2: Selection & Comparison tests
+
+    #[test]
+    fn test_argmax() {
+        let rt = create_test_runtime();
+        // 2x3 matrix: [[1, 5, 3], [4, 2, 6]]
+        let data: Vec<f32> = vec![1.0, 5.0, 3.0, 4.0, 2.0, 6.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let dim1 = Tensor::new(&[1.0f32], rt.device()).unwrap();
+
+        // argmax along dim 1: indices of max in each row
+        // row 0: max at index 1 (value 5)
+        // row 1: max at index 2 (value 6)
+        let result = rt.apply_function("argmax", &[a, dim1]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert_eq!(vals.len(), 2);
+        assert!((vals[0] - 1.0).abs() < 1e-5); // index 1
+        assert!((vals[1] - 2.0).abs() < 1e-5); // index 2
+    }
+
+    #[test]
+    fn test_argmin() {
+        let rt = create_test_runtime();
+        // 2x3 matrix: [[1, 5, 3], [4, 2, 6]]
+        let data: Vec<f32> = vec![1.0, 5.0, 3.0, 4.0, 2.0, 6.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let dim1 = Tensor::new(&[1.0f32], rt.device()).unwrap();
+
+        // argmin along dim 1: indices of min in each row
+        // row 0: min at index 0 (value 1)
+        // row 1: min at index 1 (value 2)
+        let result = rt.apply_function("argmin", &[a, dim1]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert_eq!(vals.len(), 2);
+        assert!((vals[0] - 0.0).abs() < 1e-5); // index 0
+        assert!((vals[1] - 1.0).abs() < 1e-5); // index 1
+    }
+
+    #[test]
+    fn test_gt() {
+        let rt = create_test_runtime();
+        let a = Tensor::new(&[1.0f32, 5.0, 3.0], rt.device()).unwrap();
+        let b = Tensor::new(&[2.0f32, 3.0, 3.0], rt.device()).unwrap();
+
+        let result = rt.apply_function("gt", &[a, b]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 0.0).abs() < 1e-5); // 1 > 2 = false
+        assert!((vals[1] - 1.0).abs() < 1e-5); // 5 > 3 = true
+        assert!((vals[2] - 0.0).abs() < 1e-5); // 3 > 3 = false
+    }
+
+    #[test]
+    fn test_lt() {
+        let rt = create_test_runtime();
+        let a = Tensor::new(&[1.0f32, 5.0, 3.0], rt.device()).unwrap();
+        let b = Tensor::new(&[2.0f32, 3.0, 3.0], rt.device()).unwrap();
+
+        let result = rt.apply_function("lt", &[a, b]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 1.0).abs() < 1e-5); // 1 < 2 = true
+        assert!((vals[1] - 0.0).abs() < 1e-5); // 5 < 3 = false
+        assert!((vals[2] - 0.0).abs() < 1e-5); // 3 < 3 = false
+    }
+
+    #[test]
+    fn test_eq_cmp() {
+        let rt = create_test_runtime();
+        let a = Tensor::new(&[1.0f32, 3.0, 5.0], rt.device()).unwrap();
+        let b = Tensor::new(&[2.0f32, 3.0, 3.0], rt.device()).unwrap();
+
+        let result = rt.apply_function("eq", &[a, b]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 0.0).abs() < 1e-5); // 1 == 2 = false
+        assert!((vals[1] - 1.0).abs() < 1e-5); // 3 == 3 = true
+        assert!((vals[2] - 0.0).abs() < 1e-5); // 5 == 3 = false
+    }
+
+    #[test]
+    fn test_ge() {
+        let rt = create_test_runtime();
+        let a = Tensor::new(&[1.0f32, 5.0, 3.0], rt.device()).unwrap();
+        let b = Tensor::new(&[2.0f32, 3.0, 3.0], rt.device()).unwrap();
+
+        let result = rt.apply_function("ge", &[a, b]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 0.0).abs() < 1e-5); // 1 >= 2 = false
+        assert!((vals[1] - 1.0).abs() < 1e-5); // 5 >= 3 = true
+        assert!((vals[2] - 1.0).abs() < 1e-5); // 3 >= 3 = true
+    }
+
+    #[test]
+    fn test_le() {
+        let rt = create_test_runtime();
+        let a = Tensor::new(&[1.0f32, 5.0, 3.0], rt.device()).unwrap();
+        let b = Tensor::new(&[2.0f32, 3.0, 3.0], rt.device()).unwrap();
+
+        let result = rt.apply_function("le", &[a, b]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 1.0).abs() < 1e-5); // 1 <= 2 = true
+        assert!((vals[1] - 0.0).abs() < 1e-5); // 5 <= 3 = false
+        assert!((vals[2] - 1.0).abs() < 1e-5); // 3 <= 3 = true
+    }
+
+    #[test]
+    fn test_where_cond() {
+        let rt = create_test_runtime();
+        let cond = Tensor::new(&[1.0f32, 0.0, 1.0, 0.0], rt.device()).unwrap();
+        let a = Tensor::new(&[10.0f32, 20.0, 30.0, 40.0], rt.device()).unwrap();
+        let b = Tensor::new(&[100.0f32, 200.0, 300.0, 400.0], rt.device()).unwrap();
+
+        let result = rt.apply_function("where", &[cond, a, b]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        // where cond=1, take from a; where cond=0, take from b
+        assert!((vals[0] - 10.0).abs() < 1e-5);  // cond=1 -> a[0]=10
+        assert!((vals[1] - 200.0).abs() < 1e-5); // cond=0 -> b[1]=200
+        assert!((vals[2] - 30.0).abs() < 1e-5);  // cond=1 -> a[2]=30
+        assert!((vals[3] - 400.0).abs() < 1e-5); // cond=0 -> b[3]=400
+    }
+
+    #[test]
+    fn test_where_with_comparison() {
+        let rt = create_test_runtime();
+        // Combine gt with where: threshold operation
+        let scores = Tensor::new(&[0.3f32, 0.7, 0.5, 0.9], rt.device()).unwrap();
+        let threshold = Tensor::new(&[0.5f32, 0.5, 0.5, 0.5], rt.device()).unwrap();
+        let ones = Tensor::new(&[1.0f32, 1.0, 1.0, 1.0], rt.device()).unwrap();
+        let zeros = Tensor::new(&[0.0f32, 0.0, 0.0, 0.0], rt.device()).unwrap();
+
+        // gt(scores, threshold) -> [0, 1, 0, 1]
+        let cond = rt.apply_function("gt", &[scores, threshold]).unwrap();
+        // where(cond, ones, zeros) -> [0, 1, 0, 1]
+        let result = rt.apply_function("where", &[cond, ones, zeros]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert!((vals[0] - 0.0).abs() < 1e-5); // 0.3 > 0.5 = false -> 0
+        assert!((vals[1] - 1.0).abs() < 1e-5); // 0.7 > 0.5 = true -> 1
+        assert!((vals[2] - 0.0).abs() < 1e-5); // 0.5 > 0.5 = false -> 0
+        assert!((vals[3] - 1.0).abs() < 1e-5); // 0.9 > 0.5 = true -> 1
+    }
+
+    #[test]
+    fn test_argmax_dim0() {
+        let rt = create_test_runtime();
+        // 2x3 matrix: [[1, 5, 3], [4, 2, 6]]
+        let data: Vec<f32> = vec![1.0, 5.0, 3.0, 4.0, 2.0, 6.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let dim0 = Tensor::new(&[0.0f32], rt.device()).unwrap();
+
+        // argmax along dim 0: indices of max in each column
+        // col 0: max at index 1 (value 4 > 1)
+        // col 1: max at index 0 (value 5 > 2)
+        // col 2: max at index 1 (value 6 > 3)
+        let result = rt.apply_function("argmax", &[a, dim0]).unwrap();
+        let vals: Vec<f32> = result.to_vec1().unwrap();
+
+        assert_eq!(vals.len(), 3);
+        assert!((vals[0] - 1.0).abs() < 1e-5); // col 0: row 1
+        assert!((vals[1] - 0.0).abs() < 1e-5); // col 1: row 0
+        assert!((vals[2] - 1.0).abs() < 1e-5); // col 2: row 1
+    }
+
+    #[test]
+    fn test_find_closest_node() {
+        let rt = create_test_runtime();
+        // Proximity scores from node 0: [0, 0.9, 0.3, 0.7]
+        // (distance to self is 0, closest other node is 1 with score 0.9)
+        let proximity = Tensor::new(&[0.0f32, 0.9, 0.3, 0.7], rt.device()).unwrap();
+        let dim0 = Tensor::new(&[0.0f32], rt.device()).unwrap();
+
+        let result = rt.apply_function("argmax", &[proximity, dim0]).unwrap();
+        let closest: f32 = result.to_scalar().unwrap();
+
+        // Closest node is index 1 (score 0.9)
+        assert!((closest - 1.0).abs() < 1e-5, "closest node should be 1, got {}", closest);
     }
 }

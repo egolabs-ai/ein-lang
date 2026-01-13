@@ -133,6 +133,28 @@ pub enum Token {
     #[token("abs")]
     Abs,
 
+    // Built-in functions - selection
+    #[token("argmax")]
+    Argmax,
+    #[token("argmin")]
+    Argmin,
+
+    // Built-in functions - comparison (return 0/1 tensors)
+    #[token("gt")]
+    Gt,
+    #[token("lt")]
+    Lt,
+    #[token("eq")]
+    EqCmp,
+    #[token("ge")]
+    Ge,
+    #[token("le")]
+    Le,
+
+    // Built-in functions - conditional
+    #[token("where")]
+    Where,
+
     // Identifiers (variable names, tensor names)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Ident(String),
@@ -196,6 +218,14 @@ impl std::fmt::Display for Token {
             Token::Max => write!(f, "max"),
             Token::Min => write!(f, "min"),
             Token::Abs => write!(f, "abs"),
+            Token::Argmax => write!(f, "argmax"),
+            Token::Argmin => write!(f, "argmin"),
+            Token::Gt => write!(f, "gt"),
+            Token::Lt => write!(f, "lt"),
+            Token::EqCmp => write!(f, "eq"),
+            Token::Ge => write!(f, "ge"),
+            Token::Le => write!(f, "le"),
+            Token::Where => write!(f, "where"),
             Token::Ident(s) => write!(f, "{}", s),
             Token::Float(n) => write!(f, "{}", n),
             Token::Int(n) => write!(f, "{}", n),
