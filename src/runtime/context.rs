@@ -713,17 +713,58 @@ impl Runtime {
                 Ok(a.detach())
             }
 
-            // Element-wise operations
-            // max(a, b): element-wise maximum
+            // max(x): full reduction to scalar (maximum element)
+            // max(x, dim): max along dimension, keeping dims
+            // max(a, b): element-wise maximum (when both are non-scalar tensors)
             "max" => {
-                let (a, b) = args2()?;
-                a.broadcast_maximum(b)
+                if args.len() == 1 {
+                    args[0].max_all()
+                } else if args.len() == 2 {
+                    // Disambiguate: if second arg is a scalar dim index, do reduction;
+                    // otherwise, do element-wise max.
+                    let is_dim = args[1].dims().is_empty()
+                        || (args[1].dims().len() == 1 && args[1].dims()[0] == 1);
+                    if is_dim {
+                        let dim = if args[1].dims().is_empty() {
+                            args[1].to_scalar::<f32>()? as usize
+                        } else {
+                            args[1].flatten_all()?.to_vec1::<f32>()?[0] as usize
+                        };
+                        args[0].max_keepdim(dim)
+                    } else {
+                        args[0].broadcast_maximum(&args[1])
+                    }
+                } else {
+                    Err(candle_core::Error::Msg(
+                        "max expects 1 or 2 arguments".into()
+                    ))
+                }
             }
 
-            // min(a, b): element-wise minimum
+            // min(x): full reduction to scalar (minimum element)
+            // min(x, dim): min along dimension, keeping dims
+            // min(a, b): element-wise minimum (when both are non-scalar tensors)
             "min" => {
-                let (a, b) = args2()?;
-                a.broadcast_minimum(b)
+                if args.len() == 1 {
+                    args[0].min_all()
+                } else if args.len() == 2 {
+                    let is_dim = args[1].dims().is_empty()
+                        || (args[1].dims().len() == 1 && args[1].dims()[0] == 1);
+                    if is_dim {
+                        let dim = if args[1].dims().is_empty() {
+                            args[1].to_scalar::<f32>()? as usize
+                        } else {
+                            args[1].flatten_all()?.to_vec1::<f32>()?[0] as usize
+                        };
+                        args[0].min_keepdim(dim)
+                    } else {
+                        args[0].broadcast_minimum(&args[1])
+                    }
+                } else {
+                    Err(candle_core::Error::Msg(
+                        "min expects 1 or 2 arguments".into()
+                    ))
+                }
             }
 
             // abs(x): absolute value
@@ -1596,6 +1637,67 @@ mod tests {
         assert!((vals[0] - 1.0).abs() < 1e-5); // min(1,2) = 1
         assert!((vals[1] - 3.0).abs() < 1e-5); // min(5,3) = 3
         assert!((vals[2] - 3.0).abs() < 1e-5); // min(3,4) = 3
+    }
+
+    #[test]
+    fn test_max_full_reduction() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1.0, 5.0, 3.0, 2.0, 8.0, 4.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+
+        let result = rt.apply_function("max", &[a]).unwrap();
+        let val: f32 = result.to_scalar().unwrap();
+        assert!((val - 8.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_max_dim_reduction() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1.0, 5.0, 3.0, 2.0, 8.0, 4.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let dim0 = Tensor::new(&[0.0f32], rt.device()).unwrap();
+        let dim1 = Tensor::new(&[1.0f32], rt.device()).unwrap();
+
+        // max along dim 0: [2,8,4] (keepdim → [1,3])
+        let result0 = rt.apply_function("max", &[a.clone(), dim0]).unwrap();
+        assert_eq!(result0.dims(), &[1, 3]);
+        let vals0: Vec<f32> = result0.flatten_all().unwrap().to_vec1().unwrap();
+        assert!((vals0[0] - 2.0).abs() < 1e-5);
+        assert!((vals0[1] - 8.0).abs() < 1e-5);
+        assert!((vals0[2] - 4.0).abs() < 1e-5);
+
+        // max along dim 1: [5,8] (keepdim → [2,1])
+        let result1 = rt.apply_function("max", &[a, dim1]).unwrap();
+        assert_eq!(result1.dims(), &[2, 1]);
+        let vals1: Vec<f32> = result1.flatten_all().unwrap().to_vec1().unwrap();
+        assert!((vals1[0] - 5.0).abs() < 1e-5);
+        assert!((vals1[1] - 8.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_min_full_reduction() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1.0, 5.0, 3.0, 2.0, 8.0, 4.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+
+        let result = rt.apply_function("min", &[a]).unwrap();
+        let val: f32 = result.to_scalar().unwrap();
+        assert!((val - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_min_dim_reduction() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1.0, 5.0, 3.0, 2.0, 8.0, 4.0];
+        let a = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let dim1 = Tensor::new(&[1.0f32], rt.device()).unwrap();
+
+        // min along dim 1: [1,2] (keepdim → [2,1])
+        let result = rt.apply_function("min", &[a, dim1]).unwrap();
+        assert_eq!(result.dims(), &[2, 1]);
+        let vals: Vec<f32> = result.flatten_all().unwrap().to_vec1().unwrap();
+        assert!((vals[0] - 1.0).abs() < 1e-5);
+        assert!((vals[1] - 2.0).abs() < 1e-5);
     }
 
     #[test]
