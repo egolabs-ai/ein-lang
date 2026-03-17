@@ -896,16 +896,15 @@ impl Runtime {
                 mt.get(j)?.unsqueeze(0)?.transpose(0, 1)
             }
 
-            // edges(E, n): build n×n adjacency matrix from edge list.
-            // E is [k,2] matrix of (src,dst) pairs, n is scalar node count.
-            // Returns [n,n] binary adjacency matrix.
+            // edges(E, n): build n×n adjacency matrix from [k,2] edge pairs.
+            // edges(E): same but infers n = max(index) + 1.
             "edges" => {
-                let (e, n_tensor) = args2()?;
-                let n = if n_tensor.dims().is_empty() {
-                    n_tensor.to_scalar::<f32>()? as usize
-                } else {
-                    n_tensor.flatten_all()?.to_vec1::<f32>()?[0] as usize
-                };
+                if args.is_empty() || args.len() > 2 {
+                    return Err(candle_core::Error::Msg(
+                        "edges expects 1 or 2 arguments".into()
+                    ));
+                }
+                let e = &args[0];
                 let e_dims = e.dims();
                 if e_dims.len() != 2 || e_dims[1] != 2 {
                     return Err(candle_core::Error::Msg(
@@ -913,6 +912,20 @@ impl Runtime {
                     ));
                 }
                 let edge_data = e.to_vec2::<f32>()?;
+                let n = if args.len() == 2 {
+                    if args[1].dims().is_empty() {
+                        args[1].to_scalar::<f32>()? as usize
+                    } else {
+                        args[1].flatten_all()?.to_vec1::<f32>()?[0] as usize
+                    }
+                } else {
+                    // Infer n from max index + 1
+                    let mut max_idx = 0usize;
+                    for row in &edge_data {
+                        max_idx = max_idx.max(row[0] as usize).max(row[1] as usize);
+                    }
+                    max_idx + 1
+                };
                 let mut adj = vec![0.0f32; n * n];
                 for row in &edge_data {
                     let src = row[0] as usize;
@@ -922,6 +935,49 @@ impl Runtime {
                     }
                 }
                 Tensor::new(adj, e.device())?.reshape(&[n, n])
+            }
+
+            // has_path(A, s, t): is there a directed path from s to t?
+            // Equivalent to select(tc(A), s, t). Returns scalar 0.0 or 1.0.
+            "has_path" => {
+                if args.len() != 3 {
+                    return Err(candle_core::Error::Msg(
+                        "has_path requires adjacency, source, target".into()
+                    ));
+                }
+                let a = &args[0];
+                let dims = a.dims();
+                if dims.len() != 2 || dims[0] != dims[1] {
+                    return Err(candle_core::Error::Msg(
+                        format!("has_path requires square matrix, got {:?}", dims),
+                    ));
+                }
+                let n = dims[0];
+                let s = if args[1].dims().is_empty() {
+                    args[1].to_scalar::<f32>()? as usize
+                } else {
+                    args[1].flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                let t = if args[2].dims().is_empty() {
+                    args[2].to_scalar::<f32>()? as usize
+                } else {
+                    args[2].flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                if s == t {
+                    // A node can always reach itself
+                    return Tensor::new(1.0f32, a.device());
+                }
+                let zero = Tensor::zeros(&[n, n], DType::F32, a.device())?;
+                let mut r = a.broadcast_gt(&zero)?.to_dtype(DType::F32)?;
+                let steps = (n as f32).log2().ceil() as usize;
+                let steps = steps.max(1);
+                for _ in 0..steps {
+                    let r2 = r.matmul(&r)?;
+                    let combined = r.broadcast_maximum(&r2)?;
+                    r = combined.broadcast_gt(&zero)?.to_dtype(DType::F32)?;
+                }
+                let val: f32 = r.get(s)?.get(t)?.to_scalar()?;
+                Tensor::new(if val > 0.5 { 1.0f32 } else { 0.0f32 }, a.device())
             }
 
             // ── End graph builtins ────────────────────────────────────────
@@ -2554,6 +2610,53 @@ mod tests {
         let val2 = rt.apply_function("select", &[tc, i2, j2]).unwrap();
         let v2: f32 = val2.to_scalar().unwrap();
         assert!(v2 < 0.5);
+    }
+
+    #[test]
+    #[test]
+    fn test_edges_auto_n() {
+        // edges(E) without explicit n — infer from max index
+        let rt = create_test_runtime();
+        let edge_list: Vec<f32> = vec![0.,1., 1.,2., 2.,0.];
+        let e = Tensor::new(edge_list, rt.device()).unwrap().reshape(&[3, 2]).unwrap();
+        let adj = rt.apply_function("edges", &[e]).unwrap();
+        assert_eq!(adj.dims(), &[3, 3]); // inferred n=3
+        let data = adj.to_vec2::<f32>().unwrap();
+        assert!((data[0][1] - 1.0).abs() < 1e-5);
+        assert!((data[2][0] - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_has_path_true() {
+        let rt = create_test_runtime();
+        let adj: Vec<f32> = vec![0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1., 0.,0.,0.,0.];
+        let a = Tensor::new(adj, rt.device()).unwrap().reshape(&[4, 4]).unwrap();
+        let s = Tensor::new(0.0f32, rt.device()).unwrap();
+        let t = Tensor::new(3.0f32, rt.device()).unwrap();
+        let val: f32 = rt.apply_function("has_path", &[a, s, t]).unwrap().to_scalar().unwrap();
+        assert!((val - 1.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_has_path_false() {
+        let rt = create_test_runtime();
+        let adj: Vec<f32> = vec![0.,1.,0.,0., 0.,0.,1.,0., 0.,0.,0.,1., 0.,0.,0.,0.];
+        let a = Tensor::new(adj, rt.device()).unwrap().reshape(&[4, 4]).unwrap();
+        let s = Tensor::new(3.0f32, rt.device()).unwrap();
+        let t = Tensor::new(0.0f32, rt.device()).unwrap();
+        let val: f32 = rt.apply_function("has_path", &[a, s, t]).unwrap().to_scalar().unwrap();
+        assert!(val < 0.5);
+    }
+
+    #[test]
+    fn test_has_path_self() {
+        // has_path(A, x, x) is always true
+        let rt = create_test_runtime();
+        let adj: Vec<f32> = vec![0.,0., 0.,0.];
+        let a = Tensor::new(adj, rt.device()).unwrap().reshape(&[2, 2]).unwrap();
+        let s = Tensor::new(0.0f32, rt.device()).unwrap();
+        let val: f32 = rt.apply_function("has_path", &[a, s.clone(), s]).unwrap().to_scalar().unwrap();
+        assert!((val - 1.0).abs() < 1e-5);
     }
 
     #[test]

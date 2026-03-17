@@ -98,6 +98,7 @@ impl<'a> Parser<'a> {
                 | Token::Row
                 | Token::Col
                 | Token::Edges
+                | Token::HasPath
         )
     }
 
@@ -150,6 +151,7 @@ impl<'a> Parser<'a> {
             Token::Row => "row",
             Token::Col => "col",
             Token::Edges => "edges",
+            Token::HasPath => "has_path",
             _ => panic!("Not a function token"),
         }
     }
