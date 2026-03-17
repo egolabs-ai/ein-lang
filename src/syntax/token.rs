@@ -159,6 +159,20 @@ pub enum Token {
     #[token("clamp")]
     Clamp,
 
+    // Built-in functions - graph operations
+    #[token("tc")]
+    Tc,
+    #[token("reach")]
+    Reach,
+    #[token("select")]
+    Select,
+    #[token("row")]
+    Row,
+    #[token("col")]
+    Col,
+    #[token("edges")]
+    Edges,
+
     // Identifiers (variable names, tensor names)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
     Ident(String),
@@ -231,6 +245,12 @@ impl std::fmt::Display for Token {
             Token::Le => write!(f, "le"),
             Token::Where => write!(f, "where"),
             Token::Clamp => write!(f, "clamp"),
+            Token::Tc => write!(f, "tc"),
+            Token::Reach => write!(f, "reach"),
+            Token::Select => write!(f, "select"),
+            Token::Row => write!(f, "row"),
+            Token::Col => write!(f, "col"),
+            Token::Edges => write!(f, "edges"),
             Token::Ident(s) => write!(f, "{}", s),
             Token::Float(n) => write!(f, "{}", n),
             Token::Int(n) => write!(f, "{}", n),

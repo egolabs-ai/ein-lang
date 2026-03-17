@@ -91,6 +91,12 @@ impl<'a> Parser<'a> {
                 | Token::Le
                 | Token::Where
                 | Token::Clamp
+                | Token::Tc
+                | Token::Reach
+                | Token::Select
+                | Token::Row
+                | Token::Col
+                | Token::Edges
         )
     }
 
@@ -136,6 +142,12 @@ impl<'a> Parser<'a> {
             Token::Le => "le",
             Token::Where => "where",
             Token::Clamp => "clamp",
+            Token::Tc => "tc",
+            Token::Reach => "reach",
+            Token::Select => "select",
+            Token::Row => "row",
+            Token::Col => "col",
+            Token::Edges => "edges",
             _ => panic!("Not a function token"),
         }
     }

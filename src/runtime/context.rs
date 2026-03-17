@@ -713,6 +713,177 @@ impl Runtime {
                 Ok(a.detach())
             }
 
+            // ── Graph builtins ──────────────────────────────────────────
+
+            // tc(A): transitive closure of adjacency matrix A [n,n] → [n,n]
+            // Uses repeated squaring with boolean thresholding.
+            // tc(A)[i,j] = 1.0 iff there is a directed path from i to j.
+            // Does NOT include self-reachability (diagonal stays 0 unless a cycle exists).
+            "tc" => {
+                let a = arg()?;
+                let dims = a.dims();
+                if dims.len() != 2 || dims[0] != dims[1] {
+                    return Err(candle_core::Error::Msg(
+                        format!("tc requires square matrix, got shape {:?}", dims),
+                    ));
+                }
+                let n = dims[0];
+                let zero = Tensor::zeros(&[n, n], DType::F32, a.device())?;
+
+                // R = gt(A, 0) — binarize
+                let mut r = a.broadcast_gt(&zero)?.to_dtype(DType::F32)?;
+
+                // Repeated squaring: ceil(log2(n)) steps
+                let steps = (n as f32).log2().ceil() as usize;
+                let steps = steps.max(1);
+                for _ in 0..steps {
+                    let r2 = r.matmul(&r)?;
+                    let combined = r.broadcast_maximum(&r2)?;
+                    r = combined.broadcast_gt(&zero)?.to_dtype(DType::F32)?;
+                }
+                Ok(r)
+            }
+
+            // reach(A, s): reachability vector from node s (including self).
+            // A is [n,n] adjacency, s is scalar node index.
+            // Returns [1,n] where 1.0 = reachable from s.
+            "reach" => {
+                let (a, s_tensor) = args2()?;
+                let dims = a.dims();
+                if dims.len() != 2 || dims[0] != dims[1] {
+                    return Err(candle_core::Error::Msg(
+                        format!("reach requires square matrix, got shape {:?}", dims),
+                    ));
+                }
+                let n = dims[0];
+                let s = if s_tensor.dims().is_empty() {
+                    s_tensor.to_scalar::<f32>()? as usize
+                } else {
+                    s_tensor.flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                if s >= n {
+                    return Err(candle_core::Error::Msg(
+                        format!("reach: node index {} out of range for {}-node graph", s, n),
+                    ));
+                }
+                let zero = Tensor::zeros(&[n, n], DType::F32, a.device())?;
+
+                // Compute TC
+                let mut r = a.broadcast_gt(&zero)?.to_dtype(DType::F32)?;
+                let steps = (n as f32).log2().ceil() as usize;
+                let steps = steps.max(1);
+                for _ in 0..steps {
+                    let r2 = r.matmul(&r)?;
+                    let combined = r.broadcast_maximum(&r2)?;
+                    r = combined.broadcast_gt(&zero)?.to_dtype(DType::F32)?;
+                }
+
+                // Extract row s as [1,n], then set self-reachability
+                let row = r.get(s)?.unsqueeze(0)?; // [1,n]
+                // Set position s to 1.0 (node always reaches itself)
+                let mut one_hot = vec![0.0f32; n];
+                one_hot[s] = 1.0;
+                let self_vec = Tensor::new(one_hot, a.device())?.unsqueeze(0)?;
+                row.broadcast_maximum(&self_vec)
+            }
+
+            // select(M, i, j): extract scalar element M[i,j] from matrix.
+            // M is [n,m], i and j are scalar indices. Returns scalar [].
+            "select" => {
+                if args.len() != 3 {
+                    return Err(candle_core::Error::Msg(
+                        "select requires matrix, row index, col index".into()
+                    ));
+                }
+                let m = &args[0];
+                let i = if args[1].dims().is_empty() {
+                    args[1].to_scalar::<f32>()? as usize
+                } else {
+                    args[1].flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                let j = if args[2].dims().is_empty() {
+                    args[2].to_scalar::<f32>()? as usize
+                } else {
+                    args[2].flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                let dims = m.dims();
+                if dims.len() != 2 {
+                    return Err(candle_core::Error::Msg(
+                        format!("select requires 2D matrix, got shape {:?}", dims),
+                    ));
+                }
+                let val: f32 = m.get(i)?.get(j)?.to_scalar()?;
+                Tensor::new(val, m.device())
+            }
+
+            // row(M, i): extract row i from matrix M.
+            // M is [n,m], i is scalar. Returns [1,m].
+            "row" => {
+                let (m, i_tensor) = args2()?;
+                let i = if i_tensor.dims().is_empty() {
+                    i_tensor.to_scalar::<f32>()? as usize
+                } else {
+                    i_tensor.flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                let dims = m.dims();
+                if dims.len() != 2 {
+                    return Err(candle_core::Error::Msg(
+                        format!("row requires 2D matrix, got shape {:?}", dims),
+                    ));
+                }
+                m.get(i)?.unsqueeze(0) // [m] -> [1,m]
+            }
+
+            // col(M, j): extract column j from matrix M.
+            // M is [n,m], j is scalar. Returns [n,1].
+            "col" => {
+                let (m, j_tensor) = args2()?;
+                let j = if j_tensor.dims().is_empty() {
+                    j_tensor.to_scalar::<f32>()? as usize
+                } else {
+                    j_tensor.flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                let dims = m.dims();
+                if dims.len() != 2 {
+                    return Err(candle_core::Error::Msg(
+                        format!("col requires 2D matrix, got shape {:?}", dims),
+                    ));
+                }
+                // Transpose, get row j, transpose back
+                let mt = m.transpose(0, 1)?;
+                mt.get(j)?.unsqueeze(0)?.transpose(0, 1)
+            }
+
+            // edges(E, n): build n×n adjacency matrix from edge list.
+            // E is [k,2] matrix of (src,dst) pairs, n is scalar node count.
+            // Returns [n,n] binary adjacency matrix.
+            "edges" => {
+                let (e, n_tensor) = args2()?;
+                let n = if n_tensor.dims().is_empty() {
+                    n_tensor.to_scalar::<f32>()? as usize
+                } else {
+                    n_tensor.flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                let e_dims = e.dims();
+                if e_dims.len() != 2 || e_dims[1] != 2 {
+                    return Err(candle_core::Error::Msg(
+                        format!("edges requires [k,2] edge list, got shape {:?}", e_dims),
+                    ));
+                }
+                let edge_data = e.to_vec2::<f32>()?;
+                let mut adj = vec![0.0f32; n * n];
+                for row in &edge_data {
+                    let src = row[0] as usize;
+                    let dst = row[1] as usize;
+                    if src < n && dst < n {
+                        adj[src * n + dst] = 1.0;
+                    }
+                }
+                Tensor::new(adj, e.device())?.reshape(&[n, n])
+            }
+
+            // ── End graph builtins ────────────────────────────────────────
+
             // max(x): full reduction to scalar (maximum element)
             // max(x, dim): max along dimension, keeping dims
             // max(a, b): element-wise maximum (when both are non-scalar tensors)
@@ -2141,5 +2312,206 @@ mod tests {
         assert!((vals[1] - 0.5).abs() < 1e-5); // 0.5 unchanged
         assert!((vals[2] - 1.0).abs() < 1e-5); // 1.5 clamped to 1
         assert!((vals[3] - 1.0).abs() < 1e-5); // 3 clamped to 1
+    }
+
+    // ── Graph builtin tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_tc_chain() {
+        // 0→1→2→3 (chain): TC[0,3] should be 1
+        let rt = create_test_runtime();
+        let adj: Vec<f32> = vec![
+            0.,1.,0.,0.,
+            0.,0.,1.,0.,
+            0.,0.,0.,1.,
+            0.,0.,0.,0.,
+        ];
+        let a = Tensor::new(adj, rt.device()).unwrap().reshape(&[4, 4]).unwrap();
+        let tc = rt.apply_function("tc", &[a]).unwrap();
+        let tc_data = tc.to_vec2::<f32>().unwrap();
+
+        // Node 0 can reach 1, 2, 3
+        assert!(tc_data[0][1] > 0.5);
+        assert!(tc_data[0][2] > 0.5);
+        assert!(tc_data[0][3] > 0.5);
+        // Node 3 can reach nobody
+        assert!(tc_data[3][0] < 0.5);
+        assert!(tc_data[3][1] < 0.5);
+        assert!(tc_data[3][2] < 0.5);
+        // No self-loops (no cycles in this graph)
+        assert!(tc_data[0][0] < 0.5);
+    }
+
+    #[test]
+    fn test_tc_cycle() {
+        // 0→1→2→0 (cycle): all should reach all
+        let rt = create_test_runtime();
+        let adj: Vec<f32> = vec![
+            0.,1.,0.,
+            0.,0.,1.,
+            1.,0.,0.,
+        ];
+        let a = Tensor::new(adj, rt.device()).unwrap().reshape(&[3, 3]).unwrap();
+        let tc = rt.apply_function("tc", &[a]).unwrap();
+        let tc_data = tc.to_vec2::<f32>().unwrap();
+
+        for i in 0..3 {
+            for j in 0..3 {
+                assert!(tc_data[i][j] > 0.5, "TC[{},{}] should be 1", i, j);
+            }
+        }
+    }
+
+    #[test]
+    fn test_reach_basic() {
+        // 0→1→2→3, reach from 0 should be {0,1,2,3}
+        let rt = create_test_runtime();
+        let adj: Vec<f32> = vec![
+            0.,1.,0.,0.,
+            0.,0.,1.,0.,
+            0.,0.,0.,1.,
+            0.,0.,0.,0.,
+        ];
+        let a = Tensor::new(adj, rt.device()).unwrap().reshape(&[4, 4]).unwrap();
+        let s = Tensor::new(0.0f32, rt.device()).unwrap();
+        let reach = rt.apply_function("reach", &[a, s]).unwrap();
+
+        assert_eq!(reach.dims(), &[1, 4]);
+        let vals = reach.to_vec2::<f32>().unwrap();
+        assert!(vals[0][0] > 0.5); // self-reachable
+        assert!(vals[0][1] > 0.5);
+        assert!(vals[0][2] > 0.5);
+        assert!(vals[0][3] > 0.5);
+    }
+
+    #[test]
+    fn test_reach_isolated() {
+        // 0→1, 2 isolated. reach(A, 2) = {2} only (self)
+        let rt = create_test_runtime();
+        let adj: Vec<f32> = vec![
+            0.,1.,0.,
+            0.,0.,0.,
+            0.,0.,0.,
+        ];
+        let a = Tensor::new(adj, rt.device()).unwrap().reshape(&[3, 3]).unwrap();
+        let s = Tensor::new(2.0f32, rt.device()).unwrap();
+        let reach = rt.apply_function("reach", &[a, s]).unwrap();
+
+        let vals = reach.to_vec2::<f32>().unwrap();
+        assert!(vals[0][0] < 0.5); // can't reach 0
+        assert!(vals[0][1] < 0.5); // can't reach 1
+        assert!(vals[0][2] > 0.5); // self-reachable
+    }
+
+    #[test]
+    fn test_select() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1., 2., 3., 4., 5., 6.];
+        let m = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let i = Tensor::new(0.0f32, rt.device()).unwrap();
+        let j = Tensor::new(2.0f32, rt.device()).unwrap();
+
+        let val = rt.apply_function("select", &[m, i, j]).unwrap();
+        assert!(val.dims().is_empty()); // scalar
+        let v: f32 = val.to_scalar().unwrap();
+        assert!((v - 3.0).abs() < 1e-5); // M[0,2] = 3
+    }
+
+    #[test]
+    fn test_row() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1., 2., 3., 4., 5., 6.];
+        let m = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let i = Tensor::new(1.0f32, rt.device()).unwrap();
+
+        let r = rt.apply_function("row", &[m, i]).unwrap();
+        assert_eq!(r.dims(), &[1, 3]);
+        let vals = r.to_vec2::<f32>().unwrap();
+        assert!((vals[0][0] - 4.0).abs() < 1e-5);
+        assert!((vals[0][1] - 5.0).abs() < 1e-5);
+        assert!((vals[0][2] - 6.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_col() {
+        let rt = create_test_runtime();
+        let data: Vec<f32> = vec![1., 2., 3., 4., 5., 6.];
+        let m = Tensor::new(data, rt.device()).unwrap().reshape(&[2, 3]).unwrap();
+        let j = Tensor::new(1.0f32, rt.device()).unwrap();
+
+        let c = rt.apply_function("col", &[m, j]).unwrap();
+        assert_eq!(c.dims(), &[2, 1]);
+        let vals = c.to_vec2::<f32>().unwrap();
+        assert!((vals[0][0] - 2.0).abs() < 1e-5);
+        assert!((vals[1][0] - 5.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_edges() {
+        // edges([(0,1),(1,2),(2,0)], 3) → 3×3 adjacency
+        let rt = create_test_runtime();
+        let edge_list: Vec<f32> = vec![0.,1., 1.,2., 2.,0.];
+        let e = Tensor::new(edge_list, rt.device()).unwrap().reshape(&[3, 2]).unwrap();
+        let n = Tensor::new(3.0f32, rt.device()).unwrap();
+
+        let adj = rt.apply_function("edges", &[e, n]).unwrap();
+        assert_eq!(adj.dims(), &[3, 3]);
+        let data = adj.to_vec2::<f32>().unwrap();
+
+        assert!((data[0][1] - 1.0).abs() < 1e-5); // 0→1
+        assert!((data[1][2] - 1.0).abs() < 1e-5); // 1→2
+        assert!((data[2][0] - 1.0).abs() < 1e-5); // 2→0
+        assert!((data[0][0]).abs() < 1e-5);         // no self-loop
+        assert!((data[1][0]).abs() < 1e-5);         // no 1→0
+    }
+
+    #[test]
+    fn test_tc_and_select_combined() {
+        // 0→1→2→3: select(tc(A), 0, 3) should be 1.0
+        let rt = create_test_runtime();
+        let adj: Vec<f32> = vec![
+            0.,1.,0.,0.,
+            0.,0.,1.,0.,
+            0.,0.,0.,1.,
+            0.,0.,0.,0.,
+        ];
+        let a = Tensor::new(adj, rt.device()).unwrap().reshape(&[4, 4]).unwrap();
+        let tc = rt.apply_function("tc", &[a]).unwrap();
+
+        let i = Tensor::new(0.0f32, rt.device()).unwrap();
+        let j = Tensor::new(3.0f32, rt.device()).unwrap();
+        let val = rt.apply_function("select", &[tc.clone(), i, j]).unwrap();
+        let v: f32 = val.to_scalar().unwrap();
+        assert!((v - 1.0).abs() < 1e-5);
+
+        // select(tc(A), 3, 0) should be 0.0 (no path back)
+        let i2 = Tensor::new(3.0f32, rt.device()).unwrap();
+        let j2 = Tensor::new(0.0f32, rt.device()).unwrap();
+        let val2 = rt.apply_function("select", &[tc, i2, j2]).unwrap();
+        let v2: f32 = val2.to_scalar().unwrap();
+        assert!(v2 < 0.5);
+    }
+
+    #[test]
+    fn test_edges_then_tc_triangle_count() {
+        // Build triangle graph via edges(), compute trace(A^3)/6
+        let rt = create_test_runtime();
+        // Triangle: 0-1, 1-2, 2-0 (undirected = 6 directed edges)
+        let edge_list: Vec<f32> = vec![
+            0.,1., 1.,0., 1.,2., 2.,1., 2.,0., 0.,2.
+        ];
+        let e = Tensor::new(edge_list, rt.device()).unwrap().reshape(&[6, 2]).unwrap();
+        let n = Tensor::new(3.0f32, rt.device()).unwrap();
+        let a = rt.apply_function("edges", &[e, n]).unwrap();
+
+        // A^2
+        let a2 = a.matmul(&a).unwrap();
+        // A^3
+        let a3 = a2.matmul(&a).unwrap();
+        // trace
+        let trace_val = rt.apply_function("trace", &[a3]).unwrap();
+        let t: f32 = trace_val.to_scalar().unwrap();
+        // trace(A^3)/6 = 1 triangle
+        assert!((t / 6.0 - 1.0).abs() < 1e-5);
     }
 }
