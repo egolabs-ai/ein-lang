@@ -93,6 +93,7 @@ impl<'a> Parser<'a> {
                 | Token::Clamp
                 | Token::Tc
                 | Token::Reach
+                | Token::Desc
                 | Token::Select
                 | Token::Row
                 | Token::Col
@@ -144,6 +145,7 @@ impl<'a> Parser<'a> {
             Token::Clamp => "clamp",
             Token::Tc => "tc",
             Token::Reach => "reach",
+            Token::Desc => "desc",
             Token::Select => "select",
             Token::Row => "row",
             Token::Col => "col",

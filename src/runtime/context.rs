@@ -787,6 +787,44 @@ impl Runtime {
                 row.broadcast_maximum(&self_vec)
             }
 
+            // desc(A, s): descendants of node s, EXCLUDING self.
+            // Matches nx.descendants(G, s) semantics.
+            // A is [n,n] adjacency, s is scalar. Returns [1,n].
+            "desc" => {
+                let (a, s_tensor) = args2()?;
+                let dims = a.dims();
+                if dims.len() != 2 || dims[0] != dims[1] {
+                    return Err(candle_core::Error::Msg(
+                        format!("desc requires square matrix, got shape {:?}", dims),
+                    ));
+                }
+                let n = dims[0];
+                let s = if s_tensor.dims().is_empty() {
+                    s_tensor.to_scalar::<f32>()? as usize
+                } else {
+                    s_tensor.flatten_all()?.to_vec1::<f32>()?[0] as usize
+                };
+                if s >= n {
+                    return Err(candle_core::Error::Msg(
+                        format!("desc: node index {} out of range for {}-node graph", s, n),
+                    ));
+                }
+                let zero = Tensor::zeros(&[n, n], DType::F32, a.device())?;
+
+                // Compute TC
+                let mut r = a.broadcast_gt(&zero)?.to_dtype(DType::F32)?;
+                let steps = (n as f32).log2().ceil() as usize;
+                let steps = steps.max(1);
+                for _ in 0..steps {
+                    let r2 = r.matmul(&r)?;
+                    let combined = r.broadcast_maximum(&r2)?;
+                    r = combined.broadcast_gt(&zero)?.to_dtype(DType::F32)?;
+                }
+
+                // Extract row s as [1,n] — does NOT include self
+                r.get(s)?.unsqueeze(0)
+            }
+
             // select(M, i, j): extract scalar element M[i,j] from matrix.
             // M is [n,m], i and j are scalar indices. Returns scalar [].
             "select" => {
@@ -2379,6 +2417,28 @@ mod tests {
         assert_eq!(reach.dims(), &[1, 4]);
         let vals = reach.to_vec2::<f32>().unwrap();
         assert!(vals[0][0] > 0.5); // self-reachable
+        assert!(vals[0][1] > 0.5);
+        assert!(vals[0][2] > 0.5);
+        assert!(vals[0][3] > 0.5);
+    }
+
+    #[test]
+    fn test_desc_basic() {
+        // 0→1→2→3: desc(A, 0) = {1,2,3} (excludes self)
+        let rt = create_test_runtime();
+        let adj: Vec<f32> = vec![
+            0.,1.,0.,0.,
+            0.,0.,1.,0.,
+            0.,0.,0.,1.,
+            0.,0.,0.,0.,
+        ];
+        let a = Tensor::new(adj, rt.device()).unwrap().reshape(&[4, 4]).unwrap();
+        let s = Tensor::new(0.0f32, rt.device()).unwrap();
+        let desc = rt.apply_function("desc", &[a, s]).unwrap();
+
+        assert_eq!(desc.dims(), &[1, 4]);
+        let vals = desc.to_vec2::<f32>().unwrap();
+        assert!(vals[0][0] < 0.5); // self NOT included
         assert!(vals[0][1] > 0.5);
         assert!(vals[0][2] > 0.5);
         assert!(vals[0][3] > 0.5);

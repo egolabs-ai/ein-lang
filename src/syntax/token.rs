@@ -164,6 +164,8 @@ pub enum Token {
     Tc,
     #[token("reach")]
     Reach,
+    #[token("desc")]
+    Desc,
     #[token("select")]
     Select,
     #[token("row")]
@@ -247,6 +249,7 @@ impl std::fmt::Display for Token {
             Token::Clamp => write!(f, "clamp"),
             Token::Tc => write!(f, "tc"),
             Token::Reach => write!(f, "reach"),
+            Token::Desc => write!(f, "desc"),
             Token::Select => write!(f, "select"),
             Token::Row => write!(f, "row"),
             Token::Col => write!(f, "col"),
