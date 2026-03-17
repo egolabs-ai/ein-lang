@@ -821,8 +821,12 @@ impl Runtime {
                     r = combined.broadcast_gt(&zero)?.to_dtype(DType::F32)?;
                 }
 
-                // Extract row s as [1,n] — does NOT include self
-                r.get(s)?.unsqueeze(0)
+                // Extract row s as [1,n], then zero out self position
+                let row = r.get(s)?.unsqueeze(0)?; // [1,n]
+                let mut mask = vec![1.0f32; n];
+                mask[s] = 0.0;
+                let mask_tensor = Tensor::new(mask, a.device())?.unsqueeze(0)?;
+                row.broadcast_mul(&mask_tensor)
             }
 
             // select(M, i, j): extract scalar element M[i,j] from matrix.
