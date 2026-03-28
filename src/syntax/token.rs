@@ -176,6 +176,10 @@ pub enum Token {
     Edges,
     #[token("has_path")]
     HasPath,
+    #[token("ones")]
+    Ones,
+    #[token("zeros")]
+    Zeros,
 
     // Identifiers (variable names, tensor names)
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*", |lex| lex.slice().to_string())]
@@ -257,6 +261,8 @@ impl std::fmt::Display for Token {
             Token::Col => write!(f, "col"),
             Token::Edges => write!(f, "edges"),
             Token::HasPath => write!(f, "has_path"),
+            Token::Ones => write!(f, "ones"),
+            Token::Zeros => write!(f, "zeros"),
             Token::Ident(s) => write!(f, "{}", s),
             Token::Float(n) => write!(f, "{}", n),
             Token::Int(n) => write!(f, "{}", n),

@@ -1139,6 +1139,37 @@ impl Runtime {
                 x.clamp(&min_broadcast, &max_broadcast)
             }
 
+            // ones(N): create a 1D tensor of N ones.
+            // N may be a literal (1-element tensor [5.0] → size 5),
+            // a scalar tensor, or a tensor whose first dim is used.
+            // Usage: U = ones(5)   or   U = ones(A)
+            "ones" => {
+                let x = arg()?;
+                let n = if x.dims().is_empty() {
+                    x.to_scalar::<f32>()? as usize
+                } else if x.dims().len() == 1 && x.dims()[0] == 1 {
+                    // Literal integer: [5.0] → 5
+                    x.flatten_all()?.to_vec1::<f32>()?[0] as usize
+                } else {
+                    x.dims()[0]
+                };
+                let data: Vec<f32> = vec![1.0f32; n];
+                Tensor::new(data, &self.device)
+            }
+
+            // zeros(N): create a 1D tensor of N zeros.
+            "zeros" => {
+                let x = arg()?;
+                let n = if x.dims().is_empty() {
+                    x.to_scalar::<f32>()? as usize
+                } else if x.dims().len() == 1 && x.dims()[0] == 1 {
+                    x.flatten_all()?.to_vec1::<f32>()?[0] as usize
+                } else {
+                    x.dims()[0]
+                };
+                Tensor::new(vec![0.0f32; n], &self.device)
+            }
+
             _ => Err(candle_core::Error::Msg(format!(
                 "Unknown function: {}",
                 func
